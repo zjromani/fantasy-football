@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="filters">
+  <strong>Filter:</strong>
+  <a href="/" {% if not filter_kind %}class="unread"{% endif %}>All</a>
+  <a href="/?kind=lineup" {% if filter_kind=='lineup' %}class="unread"{% endif %}>Lineup</a>
+  <a href="/?kind=waivers" {% if filter_kind=='waivers' %}class="unread"{% endif %}>Waivers</a>
+  <a href="/?kind=trades" {% if filter_kind=='trades' %}class="unread"{% endif %}>Trades</a>
+  <a href="/?kind=survivor" {% if filter_kind=='survivor' %}class="unread"{% endif %}>Survivor</a>
+  <a href="/?kind=info" {% if filter_kind=='info' %}class="unread"{% endif %}>Info</a>
+  <hr>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Kind</th>
+      <th>Created</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for n in notifications %}
+    <tr class="{% if not n["is_read"] %}unread{% endif %}">
+      <td><a href="/notifications/{{ n["id"] }}">{{ n["title"] }}</a></td>
+      <td><span class="pill">{{ n["kind"] }}</span></td>
+      <td>{{ n["created_at"] }}</td>
+      <td>{% if n["is_read"] %}Read{% else %}Unread{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">No notifications.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+

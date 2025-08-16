@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<article>
+  <h2>{{ n["title"] }}</h2>
+  <p class="kind">{{ n["kind"] }} • {{ n["created_at"] }}</p>
+  <p>{{ n["body"] }}</p>
+  <details>
+    <summary>Payload</summary>
+    <pre style="white-space:pre-wrap">{{ n["payload"] }}</pre>
+  </details>
+
+  <form method="post" action="/notifications/{{ n["id"] }}/read">
+    <button class="btn" {% if n["is_read"] %}disabled{% endif %}>Mark as read</button>
+  </form>
+</article>
+{% endblock %}
+
+
