@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "roster_positions": [
+      {"position": "QB", "count": 1},
+      {"position": "RB", "count": 2},
+      {"position": "WR", "count": 2},
+      {"position": "TE", "count": 1},
+      {"position": "W/R/T", "count": 1},
+      {"position": "BN", "count": 5}
+    ],
+    "scoring": {"ppr": "full"},
+    "faab_budget": 100,
+    "trade_deadline_week": 10
+  }
+}
+
+

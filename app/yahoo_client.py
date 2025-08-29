@@ -83,8 +83,8 @@ class YahooClient:
 
     # --- OAuth flows ---
     def get_authorization_url(self, state: str = "state", scope: str = "fspt-r") -> str:
-        client_id = self.settings.yahoo_client_id
-        redirect_uri = self.settings.yahoo_redirect_uri
+        client_id = self.settings.yahoo_client_id or os.getenv("YAHOO_CLIENT_ID")
+        redirect_uri = self.settings.yahoo_redirect_uri or os.getenv("YAHOO_REDIRECT_URI")
         if not client_id or not redirect_uri:
             raise RuntimeError("Yahoo client_id and redirect_uri must be configured")
         params = {
@@ -97,9 +97,9 @@ class YahooClient:
         return httpx.URL(f"{YAHOO_AUTH_BASE}/oauth2/request_auth").copy_add_params(params).human_repr()
 
     def exchange_code_for_tokens(self, code: str) -> OAuthTokens:
-        client_id = self.settings.yahoo_client_id
-        client_secret = self.settings.yahoo_client_secret
-        redirect_uri = self.settings.yahoo_redirect_uri
+        client_id = self.settings.yahoo_client_id or os.getenv("YAHOO_CLIENT_ID")
+        client_secret = self.settings.yahoo_client_secret or os.getenv("YAHOO_CLIENT_SECRET")
+        redirect_uri = self.settings.yahoo_redirect_uri or os.getenv("YAHOO_REDIRECT_URI")
         if not client_id or not client_secret or not redirect_uri:
             raise RuntimeError("Yahoo client_id, client_secret, and redirect_uri must be configured")
 
@@ -128,8 +128,8 @@ class YahooClient:
         if not self._tokens or not self._tokens.refresh_token:
             raise RuntimeError("No refresh_token present; complete authorization first")
 
-        client_id = self.settings.yahoo_client_id
-        client_secret = self.settings.yahoo_client_secret
+        client_id = self.settings.yahoo_client_id or os.getenv("YAHOO_CLIENT_ID")
+        client_secret = self.settings.yahoo_client_secret or os.getenv("YAHOO_CLIENT_SECRET")
         if not client_id or not client_secret:
             raise RuntimeError("Yahoo client_id and client_secret must be configured")
 
