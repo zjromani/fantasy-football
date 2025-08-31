@@ -69,12 +69,32 @@ def unread_count() -> int:
         connection.close()
 
 
+def latest_settings_payload() -> Optional[Dict[str, Any]]:
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT payload FROM notifications WHERE title = ? ORDER BY created_at DESC LIMIT 1",
+            ("Detected League Settings",),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0]) if row[0] else None
+        except Exception:
+            return None
+    finally:
+        connection.close()
+
+
 __all__ = [
     "notify",
     "list_notifications",
     "get_notification",
     "mark_read",
     "unread_count",
+    "latest_settings_payload",
 ]
 
 

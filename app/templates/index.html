@@ -1,5 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
+{% if league_settings and league_settings.get("scoring") %}
+<div style="padding:0.75rem 1rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:1rem;">
+  <strong>League Settings detected:</strong>
+  <span style="margin-left:0.5rem;">PPR: {{ league_settings["scoring"]["ppr"] }}</span>
+  {% if league_settings.get("roster_positions") %}
+  <span style="margin-left:0.5rem;">Slots: {{ league_settings["roster_positions"]|length }}</span>
+  {% endif %}
+  <form method="post" action="/actions/gm_brief" style="display:inline; margin-left:1rem;">
+    <button class="btn">Post GM Brief</button>
+  </form>
+  <form method="post" action="/actions/waivers_demo" style="display:inline; margin-left:0.5rem;">
+    <button class="btn">Post Waivers Demo</button>
+  </form>
+</div>
+{% else %}
+<div style="padding:0.75rem 1rem; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin-bottom:1rem;">
+  <strong>No League Settings yet.</strong> Load via the OAuth scripts in the README to enable settings-driven decisions.
+  <form method="post" action="/actions/gm_brief" style="display:inline; margin-left:1rem;">
+    <button class="btn">Post GM Brief</button>
+  </form>
+  <form method="post" action="/actions/waivers_demo" style="display:inline; margin-left:0.5rem;">
+    <button class="btn">Post Waivers Demo</button>
+  </form>
+</div>
+{% endif %}
 <div class="filters">
   <strong>Filter:</strong>
   <a href="/" {% if not filter_kind %}class="unread"{% endif %}>All</a>
