@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -91,10 +92,10 @@ class YahooClient:
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": scope,
             "state": state,
         }
-        return httpx.URL(f"{YAHOO_AUTH_BASE}/oauth2/request_auth").copy_add_params(params).human_repr()
+        url = httpx.URL(f"{YAHOO_AUTH_BASE}/oauth2/request_auth").copy_with(params=params)
+        return str(url)
 
     def exchange_code_for_tokens(self, code: str) -> OAuthTokens:
         client_id = self.settings.yahoo_client_id or os.getenv("YAHOO_CLIENT_ID")
@@ -103,18 +104,23 @@ class YahooClient:
         if not client_id or not client_secret or not redirect_uri:
             raise RuntimeError("Yahoo client_id, client_secret, and redirect_uri must be configured")
 
-        response = self._client.post(
-            f"{YAHOO_AUTH_BASE}/oauth2/get_token",
-            data={
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "redirect_uri": redirect_uri,
-                "code": code,
-                "grant_type": "authorization_code",
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        response.raise_for_status()
+        # Yahoo expects HTTP Basic auth for client credentials and form-encoded body
+        basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {basic}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        data = {
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri,
+            "code": code,
+        }
+        response = self._client.post(f"{YAHOO_AUTH_BASE}/oauth2/get_token", headers=headers, data=data)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # Bubble up the response text so you can see Yahoo's error_description
+            raise httpx.HTTPStatusError(f"{e} | body={response.text}", request=e.request, response=e.response)
         payload = response.json()
         tokens = OAuthTokens(
             access_token=payload["access_token"],
@@ -133,17 +139,20 @@ class YahooClient:
         if not client_id or not client_secret:
             raise RuntimeError("Yahoo client_id and client_secret must be configured")
 
-        response = self._client.post(
-            f"{YAHOO_AUTH_BASE}/oauth2/get_token",
-            data={
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "refresh_token": self._tokens.refresh_token,
-                "grant_type": "refresh_token",
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        response.raise_for_status()
+        basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {basic}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": self._tokens.refresh_token,
+        }
+        response = self._client.post(f"{YAHOO_AUTH_BASE}/oauth2/get_token", headers=headers, data=data)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise httpx.HTTPStatusError(f"{e} | body={response.text}", request=e.request, response=e.response)
         payload = response.json()
         tokens = OAuthTokens(
             access_token=payload["access_token"],
@@ -187,5 +196,3 @@ class YahooClient:
 
 
 __all__ = ["YahooClient", "OAuthTokens", "DEFAULT_TOKEN_PATH"]
-
-
