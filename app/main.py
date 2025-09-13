@@ -6,10 +6,11 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .db import get_connection, migrate, seed_example_data_if_empty
-from .inbox import list_notifications as inbox_list, get_notification as inbox_get, mark_read as inbox_mark_read, unread_count as inbox_unread, latest_settings_payload
+from .inbox import list_notifications as inbox_list, get_notification as inbox_get, mark_read as inbox_mark_read, unread_count as inbox_unread, latest_settings_payload, notify
 from .brief import post_gm_brief
 from .waivers import recommend_waivers
 from .models import LeagueSettings
+from .yahoo_client import YahooClient
 
 
 app = FastAPI(title="Fantasy Bot")
@@ -57,6 +58,31 @@ def notification_detail(request: Request, notification_id: int):
 def mark_read(notification_id: int):
     inbox_mark_read(notification_id)
     return RedirectResponse(url=f"/notifications/{notification_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/oauth/start")
+def oauth_start():
+    try:
+        url = YahooClient().get_authorization_url(state="web")
+        return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
+    except Exception as err:
+        notify("info", "Yahoo OAuth not configured", f"{err}", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/oauth/callback")
+def oauth_callback(code: Optional[str] = None, error: Optional[str] = None):
+    if error:
+        notify("info", "Yahoo OAuth error", f"{error}", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing code")
+    try:
+        YahooClient().exchange_code_for_tokens(code)
+        notify("info", "Yahoo connected", "OAuth tokens saved.", {})
+    except Exception as err:
+        notify("info", "Yahoo OAuth error", f"{err}", {})
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/actions/gm_brief")
