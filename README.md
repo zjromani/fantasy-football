@@ -30,10 +30,11 @@ make lint
 
 ## Environment
 
-Copy the example and fill in Yahoo OAuth secrets.
+Copy the example and fill in Yahoo OAuth secrets and your league key.
 ```bash
 cp .env.example .env
-# set YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_REDIRECT_URI
+# set YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_REDIRECT_URI, LEAGUE_KEY
+# LEAGUE_KEY accepts either nfl.l.<id> or just the numeric <id>
 ```
 
 Optional:
@@ -70,7 +71,7 @@ YAHOO_REDIRECT_URI=https://<your-subdomain>.ngrok-free.app/oauth/callback
 Restart the app after changing `.env`.
 
 3) Use the ngrok URL in browser
-- For now there’s no web login route; initiate OAuth from a script (below). Yahoo will redirect to your ngrok URI; copy the `?code=...` from the URL bar and exchange it with the script.
+- Click “Connect Yahoo” in the UI to authorize the app (saves tokens). If misconfigured, the Inbox will show an error.
 
 ### Quality-of-life: reserved domains
 
@@ -120,14 +121,15 @@ print("Tokens saved.")
 PY
 ```
 
-3) Fetch your LeagueSettings and post to Inbox
+3) Fetch your LeagueSettings and post to Inbox (optional script)
 ```bash
 python - <<'PY'
 from app.yahoo_client import YahooClient
 from app.models import LeagueSettings
 from app.inbox import notify
 
-LEAGUE_KEY="nfl.l.XXXXX"  # replace with your key
+# Uses LEAGUE_KEY from .env if you don't pass a key into the UI actions
+LEAGUE_KEY="nfl.l.XXXXX"  # optional override
 c = YahooClient()
 data = c.get(f"league/{LEAGUE_KEY}", params={"format":"json"}).json()
 settings = LeagueSettings.from_yahoo(data)
@@ -138,11 +140,12 @@ PY
 
 ## Common Workflows
 
-### Cache a league snapshot
+### Cache a league snapshot (or use the UI “Run Ingest Now”)
 ```bash
 python - <<'PY'
 from app.yahoo_client import YahooClient
 from app.ingest import fetch_league_bundle
+# LEAGUE_KEY comes from .env if not specified here
 LEAGUE_KEY="nfl.l.XXXXX"
 bundle = fetch_league_bundle(YahooClient(), LEAGUE_KEY, cache_dir=".cache")
 print("cached:", list(bundle.keys()))

@@ -128,6 +128,9 @@ def action_waivers_live(league_key: str = Form(None)):
     if not league_key:
         league_key = get_settings().league_key
     league_key = normalize_league_key(league_key)
+    if not league_key:
+        notify("info", "League key not configured", "Set LEAGUE_KEY in .env", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     payload = latest_settings_payload() or {}
     raw = {"settings": payload} if payload else {"settings": {"roster_positions": [{"position": "QB", "count": 1}, {"position": "RB", "count": 2}, {"position": "WR", "count": 2}, {"position": "TE", "count": 1}, {"position": "W/R/T", "count": 1}, {"position": "BN", "count": 5}], "scoring": {"ppr": "full"}}}
     settings = LeagueSettings.from_yahoo(raw)
@@ -147,6 +150,9 @@ def action_load_settings(league_key: str = Form(None)):
     if not league_key:
         league_key = get_settings().league_key
     league_key = normalize_league_key(league_key)
+    if not league_key:
+        notify("info", "League key not configured", "Set LEAGUE_KEY in .env", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     try:
         client = YahooClient()
         data = client.get(f"league/{league_key}", params={"format": "json"}).json()
@@ -162,6 +168,9 @@ def action_ingest_now(league_key: str = Form(None)):
     if not league_key:
         league_key = get_settings().league_key
     league_key = normalize_league_key(league_key)
+    if not league_key:
+        notify("info", "League key not configured", "Set LEAGUE_KEY in .env", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     try:
         client = YahooClient()
         bundle = fetch_league_bundle(client, league_key, cache_dir=".cache")
