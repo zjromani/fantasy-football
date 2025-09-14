@@ -14,7 +14,7 @@ from .models import LeagueSettings
 from .yahoo_client import YahooClient
 from .config import get_settings
 from .ingest import fetch_league_bundle, persist_bundle
-from .store import record_snapshot
+from .store import record_snapshot, list_recommendations, set_recommendation_status, count_pending_recommendations
 from .config import get_settings
 from .utils import normalize_league_key
 
@@ -40,6 +40,7 @@ def health() -> dict:
 def list_notifications(request: Request, kind: Optional[str] = None):
     rows = inbox_list(kind)
     settings_payload = latest_settings_payload() or {}
+    pending_count = count_pending_recommendations()
     return templates.TemplateResponse(
         "index.html",
         {
@@ -48,6 +49,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
             "unread": inbox_unread(),
             "filter_kind": kind or "",
             "league_settings": settings_payload,
+            "pending_recs": pending_count,
         },
     )
 
@@ -106,6 +108,26 @@ def action_gm_brief():
 def action_mark_all_read():
     inbox_mark_all()
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/approvals")
+def approvals(request: Request):
+    recs = list_recommendations(status="pending")
+    return templates.TemplateResponse("approvals.html", {"request": request, "recs": recs})
+
+
+@app.post("/approvals/{rec_id}/approve")
+def approve(rec_id: int):
+    set_recommendation_status(rec_id, "approved")
+    notify("info", "Recommendation approved", f"Rec {rec_id} approved.", {"id": rec_id})
+    return RedirectResponse(url="/approvals", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/approvals/{rec_id}/deny")
+def deny(rec_id: int):
+    set_recommendation_status(rec_id, "cancelled")
+    notify("info", "Recommendation denied", f"Rec {rec_id} denied.", {"id": rec_id})
+    return RedirectResponse(url="/approvals", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/actions/waivers_demo")

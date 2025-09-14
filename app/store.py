@@ -250,6 +250,45 @@ def insert_transaction_raw(*, kind: Optional[str], team_id: Optional[str], raw: 
         connection.close()
 
 
+def list_recommendations(status: str = "pending") -> list[dict]:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute(
+            "SELECT * FROM recommendations WHERE status = ? ORDER BY created_at DESC",
+            (status,),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+        return rows
+    finally:
+        connection.close()
+
+
+def set_recommendation_status(rec_id: int, status: str) -> None:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute("UPDATE recommendations SET status = ? WHERE id = ?", (status, rec_id))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def count_pending_recommendations() -> int:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        # Be resilient if migrations haven't created the table yet
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='recommendations'")
+        if not c.fetchone():
+            return 0
+        c.execute("SELECT COUNT(1) FROM recommendations WHERE status = 'pending'")
+        row = c.fetchone()
+        return int(row[0]) if row else 0
+    finally:
+        connection.close()
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:

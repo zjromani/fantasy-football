@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Approvals</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Kind</th>
+      <th>Title</th>
+      <th>Created</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in recs %}
+    <tr>
+      <td>{{ r["id"] }}</td>
+      <td><span class="pill">{{ r["kind"] }}</span></td>
+      <td>{{ r["title"] }}</td>
+      <td>{{ r["created_at"] }}</td>
+      <td>
+        <form method="post" action="/approvals/{{ r["id"] }}/approve" style="display:inline;">
+          <button class="btn">Approve</button>
+        </form>
+        <form method="post" action="/approvals/{{ r["id"] }}/deny" style="display:inline;">
+          <button class="btn" style="background:#b91c1c;">Deny</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5">No pending items.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+
