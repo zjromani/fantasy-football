@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 from .models import LeagueSettings
+from .yahoo_client import YahooClient
 from .store import migrate
 from .inbox import notify
 from .store import get_connection
@@ -146,5 +147,52 @@ __all__ = [
     "persist_recommendations",
     "recommend_waivers",
 ]
+
+
+def free_agents_from_yahoo(client: YahooClient, league_key: str, max_players: int = 100) -> List[Dict]:
+    # Fetch players and try to filter to free agents if the structure contains a status field.
+    # Yahoo returns XML by default; we pass format=json from the caller route. This parser is defensive.
+    response = client.get(f"league/{league_key}/players", params={"format": "json"})
+    data = response.json()
+    players_container = data.get("players") or data.get("league", {}).get("players") or []
+    result: List[Dict] = []
+    for p in players_container:
+        # Try to accommodate different shapes
+        pid = str(p.get("player_id") or p.get("id") or p.get("playerKey") or p.get("player_key") or p)
+        name = (
+            p.get("name")
+            or (p.get("player") or {}).get("name")
+            or (p.get("player") or {}).get("full")
+            or pid
+        )
+        if isinstance(name, dict):
+            name = name.get("full") or name.get("display") or pid
+        pos = (
+            p.get("position")
+            or p.get("display_position")
+            or (p.get("player") or {}).get("display_position")
+            or (p.get("player") or {}).get("primary_position")
+            or "UTIL"
+        )
+        status = str(p.get("status") or (p.get("player") or {}).get("status") or "").upper()
+        # Filter likely free agents if status present
+        if status and status not in {"FA", "W"}:
+            continue
+        # Naive projections until a proper source is integrated
+        proj_base = float((p.get("proj_points") or (p.get("player") or {}).get("proj_points") or 5.0))
+        trend = float((p.get("trend_last2") or 0.0))
+        sched = float((p.get("schedule_next4") or 1.0))
+        result.append({
+            "id": pid,
+            "name": name,
+            "position": pos,
+            "proj_base": proj_base,
+            "trend_last2": trend,
+            "schedule_next4": sched,
+        })
+        if len(result) >= max_players:
+            break
+    return result
+
 
 

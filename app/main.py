@@ -9,7 +9,7 @@ from .db import get_connection, migrate, seed_example_data_if_empty
 from .store import migrate as store_migrate
 from .inbox import list_notifications as inbox_list, get_notification as inbox_get, mark_read as inbox_mark_read, unread_count as inbox_unread, latest_settings_payload, notify
 from .brief import post_gm_brief
-from .waivers import recommend_waivers
+from .waivers import recommend_waivers, free_agents_from_yahoo
 from .models import LeagueSettings
 from .yahoo_client import YahooClient
 from .ingest import fetch_league_bundle
@@ -111,6 +111,22 @@ def action_waivers_demo():
         {"id": "p_te1", "name": "Athletic TE", "position": "TE", "proj_base": 8, "trend_last2": 1, "schedule_next4": 2},
     ]
     recommend_waivers(settings=settings, current_starters_count=current, free_agents=free_agents, faab_remaining=50, waiver_type="faab", top_n=3)
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/actions/waivers_live")
+def action_waivers_live(league_key: str = Form(...)):
+    payload = latest_settings_payload() or {}
+    raw = {"settings": payload} if payload else {"settings": {"roster_positions": [{"position": "QB", "count": 1}, {"position": "RB", "count": 2}, {"position": "WR", "count": 2}, {"position": "TE", "count": 1}, {"position": "W/R/T", "count": 1}, {"position": "BN", "count": 5}], "scoring": {"ppr": "full"}}}
+    settings = LeagueSettings.from_yahoo(raw)
+    try:
+        client = YahooClient()
+        fa = free_agents_from_yahoo(client, league_key)
+        # Rough starter counts; future: compute from roster data
+        current = {"RB": settings.positional_limits.rb, "WR": settings.positional_limits.wr, "QB": settings.positional_limits.qb, "TE": settings.positional_limits.te}
+        recommend_waivers(settings=settings, current_starters_count=current, free_agents=fa, faab_remaining=100 if settings.faab_budget else 0, waiver_type="faab", top_n=5)
+    except Exception as err:
+        notify("info", "Waivers live error", f"{err}", {"league_key": league_key})
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
