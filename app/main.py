@@ -14,7 +14,7 @@ from .models import LeagueSettings
 from .yahoo_client import YahooClient
 from .config import get_settings
 from .ingest import fetch_league_bundle, persist_bundle
-from .store import record_snapshot, list_recommendations, set_recommendation_status, count_pending_recommendations
+from .store import record_snapshot, list_recommendations, set_recommendation_status, count_pending_recommendations, get_recommendation, insert_transaction_raw
 from .config import get_settings
 from .utils import normalize_league_key
 
@@ -98,7 +98,10 @@ def oauth_callback(code: Optional[str] = None, error: Optional[str] = None):
 @app.post("/actions/gm_brief")
 def action_gm_brief():
     payload = latest_settings_payload() or {}
-    raw = {"settings": payload} if payload else {"settings": {"roster_positions": [{"position": "QB", "count": 1}, {"position": "RB", "count": 2}, {"position": "WR", "count": 2}, {"position": "TE", "count": 1}, {"position": "W/R/T", "count": 1}, {"position": "BN", "count": 5}], "scoring": {"ppr": "full"}}}
+    if not payload:
+        notify("info", "Missing LeagueSettings", "Load settings before posting GM Brief.", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    raw = {"settings": payload}
     settings = LeagueSettings.from_yahoo(raw)
     post_gm_brief(settings)
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
@@ -118,7 +121,55 @@ def approvals(request: Request):
 
 @app.post("/approvals/{rec_id}/approve")
 def approve(rec_id: int):
+    rec = get_recommendation(rec_id)
+    if not rec:
+        notify("info", "Recommendation not found", f"ID {rec_id}", {})
+        return RedirectResponse(url="/approvals", status_code=status.HTTP_303_SEE_OTHER)
+
+    # Default: mark approved
     set_recommendation_status(rec_id, "approved")
+
+    # Attempt Yahoo write for waivers if configured
+    try:
+        if rec.get("kind") == "waivers":
+            import json as _json
+            payload = {}
+            try:
+                payload = _json.loads(rec.get("payload") or "{}")
+            except Exception:
+                payload = {}
+            items = payload.get("items") or [payload]
+            if not isinstance(items, list):
+                items = [payload]
+            settings = get_settings()
+            league_key = normalize_league_key(settings.league_key)
+            team_key = settings.team_key
+            if not league_key or not team_key:
+                raise RuntimeError("LEAGUE_KEY and TEAM_KEY must be set in env for Yahoo writes")
+            # Build a minimal transaction XML: add with FAAB bid for first item
+            item0 = items[0] if items else {}
+            player_key = item0.get("player_id") or item0.get("player_key")
+            faab = item0.get("faab_min") or item0.get("faab") or 0
+            if not player_key:
+                raise RuntimeError("Missing player_id in recommendation payload")
+            xml = f"""
+<fantasy_content>
+  <transaction>
+    <type>add</type>
+    <faab_bid>{int(faab) if faab else 0}</faab_bid>
+    <player>
+      <player_key>{player_key}</player_key>
+    </player>
+    <team_key>{team_key}</team_key>
+  </transaction>
+</fantasy_content>""".strip()
+            client = YahooClient()
+            resp = client.post_xml(f"league/{league_key}/transactions", xml)
+            insert_transaction_raw(kind="waiver_submit", team_id=None, raw=f"request={_json.dumps({'xml': xml})}; response={resp.text}")
+            notify("info", "Waiver submitted", f"Submitted add for {player_key}", {"rec_id": rec_id})
+    except Exception as err:
+        notify("info", "Yahoo write error", f"{err}", {"rec_id": rec_id})
+
     notify("info", "Recommendation approved", f"Rec {rec_id} approved.", {"id": rec_id})
     return RedirectResponse(url="/approvals", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -133,7 +184,10 @@ def deny(rec_id: int):
 @app.post("/actions/waivers_demo")
 def action_waivers_demo():
     payload = latest_settings_payload() or {}
-    raw = {"settings": payload} if payload else {"settings": {"roster_positions": [{"position": "QB", "count": 1}, {"position": "RB", "count": 2}, {"position": "WR", "count": 2}, {"position": "TE", "count": 1}, {"position": "W/R/T", "count": 1}, {"position": "BN", "count": 5}], "scoring": {"ppr": "full"}}}
+    if not payload:
+        notify("info", "Missing LeagueSettings", "Load settings before running waivers.", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    raw = {"settings": payload}
     settings = LeagueSettings.from_yahoo(raw)
     current = {"RB": 2, "WR": 2, "QB": 1, "TE": 1}
     free_agents = [
@@ -154,7 +208,10 @@ def action_waivers_live(league_key: str = Form(None)):
         notify("info", "League key not configured", "Set LEAGUE_KEY in .env", {})
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     payload = latest_settings_payload() or {}
-    raw = {"settings": payload} if payload else {"settings": {"roster_positions": [{"position": "QB", "count": 1}, {"position": "RB", "count": 2}, {"position": "WR", "count": 2}, {"position": "TE", "count": 1}, {"position": "W/R/T", "count": 1}, {"position": "BN", "count": 5}], "scoring": {"ppr": "full"}}}
+    if not payload:
+        notify("info", "Missing LeagueSettings", "Load settings before running waivers.", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    raw = {"settings": payload}
     settings = LeagueSettings.from_yahoo(raw)
     try:
         client = YahooClient()
