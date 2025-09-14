@@ -63,7 +63,7 @@ def fetch_league_bundle(
         "transactions": f"league/{league_key}/transactions",
     }
     for name, ep in endpoints.items():
-        bundle[name] = _get_or_fetch_json(client, ep, params=None, cache_dir=cd)
+        bundle[name] = _get_or_fetch_json(client, ep, params={"format": "json"}, cache_dir=cd)
     return bundle
 
 

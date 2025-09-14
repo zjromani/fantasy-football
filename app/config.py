@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # DB
     db_path: Optional[str] = None
 
+    # League
+    league_key: Optional[str] = None
+
 
 @lru_cache()
 def get_settings() -> Settings:
