@@ -237,6 +237,19 @@ def record_snapshot(*, endpoint: str, params: Optional[Dict[str, Any]], raw: str
     return digest, inserted
 
 
+def insert_transaction_raw(*, kind: Optional[str], team_id: Optional[str], raw: str) -> None:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute(
+            "INSERT INTO transactions_raw(kind, team_id, raw) VALUES(?, ?, ?)",
+            (kind, team_id, raw),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:

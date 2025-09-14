@@ -12,7 +12,7 @@ from .brief import post_gm_brief
 from .waivers import recommend_waivers, free_agents_from_yahoo
 from .models import LeagueSettings
 from .yahoo_client import YahooClient
-from .ingest import fetch_league_bundle
+from .ingest import fetch_league_bundle, persist_bundle
 from .store import record_snapshot
 
 
@@ -161,6 +161,8 @@ def action_ingest_now(league_key: str = Form(...)):
         for name, data in bundle.items():
             ep = endpoints.get(name, name)
             record_snapshot(endpoint=ep, params={"format": "json"}, raw=_json.dumps(data))
+        # Persist into sqlite for local querying
+        persist_bundle(bundle)
         notify("info", "Ingest complete", f"Cached and snapshotted {len(bundle)} endpoints.", {"league_key": league_key, "endpoints": list(bundle.keys())})
     except Exception as err:
         notify("info", "Ingest error", f"{err}", {"league_key": league_key})
