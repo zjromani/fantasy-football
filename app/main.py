@@ -1,11 +1,12 @@
 import os
 from typing import Optional
 
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, HTTPException, status, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .db import get_connection, migrate, seed_example_data_if_empty
+from .store import migrate as store_migrate
 from .inbox import list_notifications as inbox_list, get_notification as inbox_get, mark_read as inbox_mark_read, unread_count as inbox_unread, latest_settings_payload, notify
 from .brief import post_gm_brief
 from .waivers import recommend_waivers
@@ -20,6 +21,8 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "t
 @app.on_event("startup")
 def on_startup() -> None:
     migrate()
+    # Ensure full app schema exists (players, teams, recommendations, etc.)
+    store_migrate()
     seed_example_data_if_empty()
 
 
@@ -106,6 +109,18 @@ def action_waivers_demo():
         {"id": "p_te1", "name": "Athletic TE", "position": "TE", "proj_base": 8, "trend_last2": 1, "schedule_next4": 2},
     ]
     recommend_waivers(settings=settings, current_starters_count=current, free_agents=free_agents, faab_remaining=50, waiver_type="faab", top_n=3)
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/actions/load_settings")
+def action_load_settings(league_key: str = Form(...)):
+    try:
+        client = YahooClient()
+        data = client.get(f"league/{league_key}", params={"format": "json"}).json()
+        settings = LeagueSettings.from_yahoo(data)
+        notify("info", "Detected League Settings", "Loaded from Yahoo.", settings.model_dump())
+    except Exception as err:
+        notify("info", "Load League Settings error", f"{err}", {"league_key": league_key})
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
