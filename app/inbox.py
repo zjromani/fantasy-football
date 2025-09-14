@@ -69,6 +69,17 @@ def unread_count() -> int:
         connection.close()
 
 
+def mark_all_read() -> int:
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("UPDATE notifications SET is_read = 1 WHERE is_read = 0")
+        connection.commit()
+        return cursor.rowcount
+    finally:
+        connection.close()
+
+
 def latest_settings_payload() -> Optional[Dict[str, Any]]:
     connection = get_connection()
     try:

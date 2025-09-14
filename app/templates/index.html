@@ -45,6 +45,9 @@
   <a href="/?kind=trades" {% if filter_kind=='trades' %}class="unread"{% endif %}>Trades</a>
   <a href="/?kind=survivor" {% if filter_kind=='survivor' %}class="unread"{% endif %}>Survivor</a>
   <a href="/?kind=info" {% if filter_kind=='info' %}class="unread"{% endif %}>Info</a>
+  <form method="post" action="/actions/notifications/mark_all_read" style="display:inline; margin-left:1rem;">
+    <button class="btn">Mark all as read</button>
+  </form>
   <hr>
 </div>
 
