@@ -277,3 +277,77 @@ kill -9 <pid>
 - SQLite write errors: ensure repo directory is writable or set `DB_PATH` to a writable location.
 
 
+## AI Agent
+
+The app includes an AI Agent that pulls league data, ranks waivers, optimizes your lineup, and proposes trades. It talks to OpenAI and uses the app’s internal tools (ingest, scoring, waivers, trades, inbox, and optional writes).
+
+### Prereqs
+- Python venv active
+- Yahoo OAuth connected
+- ngrok URL set as Redirect URI in Yahoo
+- OpenAI paid account
+
+### Env
+Add to `.env`:
+
+```
+OPENAI_API_KEY=sk-...
+AI_AUTOPILOT=false               # true enables auto-execute for approved actions
+AI_THRESHOLDS_JSON={"waiver":{"score_min":12,"confidence_min":0.65,"faab_cap_pct":0.25}}
+```
+
+### What the Agent can do
+- Pull league state and parse LeagueSettings
+- Rank waivers with FAAB min/max, settings-aware
+- Optimize start/sit with injury and BYE rules
+- Propose trades that improve both sides and relieve BYE zeros
+- Post a single GM Brief to the Inbox with 3 actions
+- Optionally execute waivers if autopilot and thresholds pass
+- Everything is logged to SQLite for audit
+
+### Run it
+Daily brief:
+
+```
+python -m app.schedule ai_morning
+```
+
+Tuesday waiver plan:
+
+```
+python -m app.schedule ai_tuesday
+```
+
+Game day:
+
+```
+python -m app.schedule ai_gameday
+```
+
+Manual run:
+
+```
+python - <<'PY'
+from app.ai.agent import run_agent
+msg_id = run_agent("weekly_brief", constraints={})
+print("Inbox message:", msg_id)
+PY
+```
+
+### Approvals and autopilot
+- By default the Agent asks for approval in the Inbox before writes.
+- Set `AI_AUTOPILOT=true` to allow auto-execution for actions that meet thresholds.
+- Thresholds live in `AI_THRESHOLDS_JSON` and are validated at startup.
+
+### Observability
+- Each agent run writes to `agent_runs`.
+- Each tool call writes to `tool_calls`.
+- Final decisions write to `decisions`.
+Open an Inbox message and follow the summary to trace the run.
+
+### Notes
+- Every decision uses LeagueSettings. If settings are missing, runs stop.
+- Trades are proposals only in v1. Waivers can execute with approval or autopilot.
+- When in doubt on token usage, reduce context in `app/ai/context.py`.
+
+
