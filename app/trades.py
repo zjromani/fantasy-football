@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Dict, List, Tuple
 
 from .models import LeagueSettings
@@ -39,6 +40,8 @@ class TradeProposal:
     receive: List[str]  # player ids going to offer_from
     score: float
     rationale: str
+    acceptance_odds: float | None = None
+    both_sides_gain: float | None = None
 
 
 def _need_score(state: TeamState) -> Dict[str, float]:
@@ -98,6 +101,17 @@ def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamStat
             if da > 0 and db > 0:
                 score = round(da + db, 2)
                 rationale = f"A +{da:.1f}, B +{db:.1f}; BYE relief/PO considerations included"
+                both_sides_gain = round(da + db, 2)
+                # First-pass acceptance odds from opponent tendencies + gain signal
+                rate = (
+                    float(team_b.manager_profile.get("trade_acceptance_rate"))
+                    if isinstance(team_b.manager_profile, dict) and team_b.manager_profile.get("trade_acceptance_rate") is not None
+                    else float(team_b.manager_profile.get("trade_history_acceptance", 0.5))
+                    if isinstance(team_b.manager_profile, dict)
+                    else 0.5
+                )
+                gain_signal = 1 / (1 + math.exp(-both_sides_gain / 3.0))  # sigmoid
+                acceptance_odds = max(0.0, min(1.0, 0.3 + 0.4 * rate + 0.3 * gain_signal))
                 proposals.append(
                     TradeProposal(
                         offer_from=team_a.team_id,
@@ -106,6 +120,8 @@ def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamStat
                         receive=[pb.id],
                         score=score,
                         rationale=rationale,
+                        acceptance_odds=acceptance_odds,
+                        both_sides_gain=both_sides_gain,
                     )
                 )
 
@@ -118,6 +134,16 @@ def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamStat
             if da > 0 and db > 0:
                 score = round(da + db, 2)
                 rationale = f"A +{da:.1f}, B +{db:.1f}; 2-for-2 package"
+                both_sides_gain = round(da + db, 2)
+                rate = (
+                    float(team_b.manager_profile.get("trade_acceptance_rate"))
+                    if isinstance(team_b.manager_profile, dict) and team_b.manager_profile.get("trade_acceptance_rate") is not None
+                    else float(team_b.manager_profile.get("trade_history_acceptance", 0.5))
+                    if isinstance(team_b.manager_profile, dict)
+                    else 0.5
+                )
+                gain_signal = 1 / (1 + math.exp(-both_sides_gain / 3.0))
+                acceptance_odds = max(0.0, min(1.0, 0.3 + 0.4 * rate + 0.3 * gain_signal))
                 proposals.append(
                     TradeProposal(
                         offer_from=team_a.team_id,
@@ -126,6 +152,8 @@ def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamStat
                         receive=[pb1.id, pb2.id],
                         score=score,
                         rationale=rationale,
+                        acceptance_odds=acceptance_odds,
+                        both_sides_gain=both_sides_gain,
                     )
                 )
 
