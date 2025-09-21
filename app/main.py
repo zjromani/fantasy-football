@@ -42,9 +42,9 @@ def list_notifications(request: Request, kind: Optional[str] = None):
     settings_payload = latest_settings_payload() or {}
     pending_count = count_pending_recommendations()
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "notifications": rows,
             "unread": inbox_unread(),
             "filter_kind": kind or "",
@@ -60,7 +60,7 @@ def notification_detail(request: Request, notification_id: int):
     if row is None:
         raise HTTPException(status_code=404, detail="Notification not found")
     return templates.TemplateResponse(
-        "detail.html", {"request": request, "n": row, "unread": inbox_unread()}
+        request, "detail.html", {"n": row, "unread": inbox_unread()}
     )
 
 
@@ -116,7 +116,7 @@ def action_mark_all_read():
 @app.get("/approvals")
 def approvals(request: Request):
     recs = list_recommendations(status="pending")
-    return templates.TemplateResponse("approvals.html", {"request": request, "recs": recs})
+    return templates.TemplateResponse(request, "approvals.html", {"recs": recs})
 
 
 @app.post("/approvals/{rec_id}/approve")
