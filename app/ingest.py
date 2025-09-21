@@ -39,8 +39,20 @@ def _get_or_fetch_json(
     cached = _cache_read(cache_dir, key)
     if cached is not None:
         return cached
-    response = client.get(path, params=params)
-    response.raise_for_status()
+    try:
+        response = client.get(path, params=params)
+        response.raise_for_status()
+    except Exception as e:
+        # Surface response body if available for better diagnostics
+        body = None
+        try:
+            body = response.text  # type: ignore[name-defined]
+        except Exception:
+            body = None
+        msg = f"ingest fetch failed for {path} params={params}: {e}"
+        if body:
+            msg += f" | body={body}"
+        raise RuntimeError(msg)
     data = response.json()
     if isinstance(data, dict):
         _cache_write(cache_dir, key, data)
@@ -56,7 +68,8 @@ def fetch_league_bundle(
     endpoints = {
         "league": f"league/{league_key}",
         "teams": f"league/{league_key}/teams",
-        "rosters": f"league/{league_key}/rosters",
+        # Yahoo requires teams;out=roster to expand rosters for all teams
+        "rosters": f"league/{league_key}/teams;out=roster",
         "players": f"league/{league_key}/players",
         "matchups": f"league/{league_key}/scoreboard",
         "standings": f"league/{league_key}/standings",
@@ -76,60 +89,83 @@ def ingest(client: YahooClient, league_key: str, *, cache_dir: Optional[str] = N
 
 
 def persist_bundle(bundle: Dict[str, Any]) -> None:
-    # Defensive parsing; shapes vary for Yahoo JSON, focus on common fields
+    # Defensive parsing; if shapes are unexpected, skip rather than error
+    import json as _json
+
     # Teams
-    teams = bundle.get("teams") or []
-    for t in teams:
-        tid = str(t.get("team_id") or t.get("id") or t.get("team_key") or t)
-        name = str(t.get("name") or (t.get("team") or {}).get("name") or tid)
-        manager = (t.get("managers") or [{}])[0].get("nickname") if isinstance(t.get("managers"), list) else None
-        abbrev = (t.get("team") or {}).get("abbr") or t.get("abbrev")
-        if tid and name:
-            upsert_team(team_id=tid, name=name, manager=manager, abbrev=abbrev)
+    teams = bundle.get("teams")
+    if isinstance(teams, list):
+        for t in teams:
+            if not isinstance(t, dict):
+                continue
+            tid = str(t.get("team_id") or t.get("id") or t.get("team_key") or "")
+            name = t.get("name") or (t.get("team") or {}).get("name") or tid
+            if isinstance(name, dict):
+                name = name.get("full") or name.get("display") or tid
+            manager = (t.get("managers") or [{}])[0].get("nickname") if isinstance(t.get("managers"), list) else None
+            abbrev = (t.get("team") or {}).get("abbr") or t.get("abbrev")
+            if tid and name:
+                upsert_team(team_id=tid, name=str(name), manager=manager, abbrev=abbrev)
 
     # Players
-    players = bundle.get("players") or []
-    for p in players:
-        pid = str(p.get("player_id") or p.get("id") or p.get("player_key") or p)
-        name = p.get("name") or (p.get("player") or {}).get("name") or pid
-        if isinstance(name, dict):
-            name = name.get("full") or name.get("display") or pid
-        pos = p.get("position") or p.get("display_position") or (p.get("player") or {}).get("display_position")
-        team = (p.get("editorial_team_abbr") or (p.get("player") or {}).get("editorial_team_abbr"))
-        bye = p.get("bye_week") or (p.get("bye_weeks") or {}).get("week")
-        upsert_player(player_id=pid, name=str(name), position=str(pos) if pos else None, team=str(team) if team else None, bye_week=int(bye) if bye else None)
+    players = bundle.get("players")
+    if isinstance(players, list):
+        for p in players:
+            if not isinstance(p, dict):
+                continue
+            pid = str(p.get("player_id") or p.get("id") or p.get("player_key") or "")
+            name = p.get("name") or (p.get("player") or {}).get("name") or pid
+            if isinstance(name, dict):
+                name = name.get("full") or name.get("display") or pid
+            pos = p.get("position") or p.get("display_position") or (p.get("player") or {}).get("display_position")
+            team = (p.get("editorial_team_abbr") or (p.get("player") or {}).get("editorial_team_abbr"))
+            bye = p.get("bye_week") or (p.get("bye_weeks") or {}).get("week")
+            if pid and name:
+                upsert_player(player_id=pid, name=str(name), position=str(pos) if pos else None, team=str(team) if team else None, bye_week=int(bye) if bye else None)
 
     # Rosters
-    rosters = bundle.get("rosters") or []
-    for r in rosters:
-        team_id = str(r.get("team_id") or r.get("teamKey") or r.get("team_key") or "")
-        week = int(r.get("week") or 0)
-        for entry in r.get("entries", []):
-            pid = str(entry.get("player_id") or entry.get("id") or entry.get("player_key") or "")
-            slot = entry.get("slot") or entry.get("position")
-            status = entry.get("status")
-            if team_id and pid and week:
-                upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
+    rosters = bundle.get("rosters")
+    if isinstance(rosters, list):
+        for r in rosters:
+            if not isinstance(r, dict):
+                continue
+            team_id = str(r.get("team_id") or r.get("teamKey") or r.get("team_key") or "")
+            week_val = r.get("week")
+            week = int(week_val) if isinstance(week_val, (int, str)) and str(week_val).isdigit() else 0
+            entries = r.get("entries") if isinstance(r.get("entries"), list) else []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                pid = str(entry.get("player_id") or entry.get("id") or entry.get("player_key") or "")
+                slot = entry.get("slot") or entry.get("position")
+                status = entry.get("status")
+                if team_id and pid and week:
+                    upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
 
     # Matchups
-    matchups = bundle.get("matchups") or bundle.get("scoreboard") or []
-    for m in matchups:
-        week = int(m.get("week") or 0)
-        a = m.get("team_a") or m.get("teamA") or {}
-        b = m.get("team_b") or m.get("teamB") or {}
-        a_id = str(a.get("team_id") or a.get("id") or "")
-        b_id = str(b.get("team_id") or b.get("id") or "")
-        if week and a_id and b_id:
-            upsert_matchup(week=week, team_id=a_id, opponent_id=b_id, projected=None, actual=None, result=None)
-            upsert_matchup(week=week, team_id=b_id, opponent_id=a_id, projected=None, actual=None, result=None)
+    matchups = bundle.get("matchups") or bundle.get("scoreboard")
+    if isinstance(matchups, list):
+        for m in matchups:
+            if not isinstance(m, dict):
+                continue
+            week = int(m.get("week") or 0)
+            a = m.get("team_a") or m.get("teamA") or {}
+            b = m.get("team_b") or m.get("teamB") or {}
+            a_id = str(a.get("team_id") or a.get("id") or "") if isinstance(a, dict) else ""
+            b_id = str(b.get("team_id") or b.get("id") or "") if isinstance(b, dict) else ""
+            if week and a_id and b_id:
+                upsert_matchup(week=week, team_id=a_id, opponent_id=b_id, projected=None, actual=None, result=None)
+                upsert_matchup(week=week, team_id=b_id, opponent_id=a_id, projected=None, actual=None, result=None)
 
     # Transactions
-    txs = bundle.get("transactions") or []
-    import json as _json
-    for tx in txs:
-        kind = str(tx.get("type") or tx.get("kind") or "")
-        team_id = str(tx.get("team_id") or tx.get("teamKey") or "")
-        insert_transaction_raw(kind=kind or None, team_id=team_id or None, raw=_json.dumps(tx))
+    txs = bundle.get("transactions")
+    if isinstance(txs, list):
+        for tx in txs:
+            if not isinstance(tx, dict):
+                continue
+            kind = str(tx.get("type") or tx.get("kind") or "")
+            team_id = str(tx.get("team_id") or tx.get("teamKey") or "")
+            insert_transaction_raw(kind=kind or None, team_id=team_id or None, raw=_json.dumps(tx))
 
 
 __all__ = ["fetch_league_bundle", "ingest"]

@@ -275,7 +275,8 @@ def action_ingest_now(league_key: str = Form(None)):
         persist_bundle(bundle)
         notify("info", "Ingest complete", f"Cached and snapshotted {len(bundle)} endpoints.", {"league_key": league_key, "endpoints": list(bundle.keys())})
     except Exception as err:
-        notify("info", "Ingest error", f"{err}", {"league_key": league_key})
+        # err may include response text; include it in payload for diagnostics
+        notify("info", "Ingest error", f"{err}", {"league_key": league_key, "error": str(err)})
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
