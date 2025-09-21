@@ -67,22 +67,29 @@ def profile_manager(team_id: str) -> Dict[str, Any]:
             if status in {"accepted", "complete", "completed"}:
                 trades_accepted += 1
 
-    faab_spend_rate = faab_total
+    total_events = adds + drops + trades if (adds + drops + trades) > 0 else 1
+    add_drop_rate = (adds + drops) / float(total_events)
+    faab_spend_rate = faab_total / float(adds or 1)
     avg_bid = (sum(faab_bids) / len(faab_bids)) if faab_bids else 0.0
     position_bias = dict(pos_counter)
     typical_hour = int(round(sum(action_hours) / len(action_hours))) if action_hours else None
     acceptance_rate = (trades_accepted / trades) if trades else 0.0
+    typical_response_time = None
 
     return {
         "team_id": team_id,
         "add_count": adds,
         "drop_count": drops,
-        "faab_spend_total": round(faab_spend_rate, 2),
+        "add_drop_rate": round(add_drop_rate, 3),
+        "faab_spend_rate": round(faab_spend_rate, 2),
+        "faab_spend_total": round(faab_total, 2),
         "faab_avg_bid": round(avg_bid, 2),
         "position_bias": position_bias,
         "trade_count": trades,
         "trade_acceptance_rate": round(acceptance_rate, 3),
+        "trade_history_acceptance": round(acceptance_rate, 3),
         "typical_action_hour": typical_hour,
+        "typical_response_time": typical_response_time,
     }
 
 
