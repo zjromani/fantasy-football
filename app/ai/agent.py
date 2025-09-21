@@ -6,6 +6,10 @@ from app.inbox import notify, latest_settings_payload
 from app.ai.tools import invoke_tool
 from app.store import insert_agent_run, finish_agent_run, log_tool_call, insert_decision
 import json as _json
+from app.ai.config import get_ai_settings
+from app.ai.policy import can_execute_waiver
+from app.config import get_settings
+from app.yahoo_client import YahooClient
 
 
 def run_agent(task: str, constraints: Dict[str, Any] | None = None) -> int:
@@ -44,16 +48,63 @@ def run_agent(task: str, constraints: Dict[str, Any] | None = None) -> int:
 
     # 3) Compose a concise brief
     actions: list[str] = []
+    pending_actions = []
     if waivers.get("recommendations"):
         top = waivers["recommendations"][0]
         actions.append(
             f"Waiver: add {top.get('name')} ({top.get('position')}) — score {top.get('score')} FAAB {top.get('faab_min')}-{top.get('faab_max')}"
+        )
+        # Add as a pending action unless executed by autopilot
+        pending_actions.append(
+            {
+                "type": "waiver",
+                "add_player_id": top.get("player_id"),
+                "drop_player_id": None,
+                "bid_amount": top.get("faab_min"),
+                "score": top.get("score"),
+            }
         )
     else:
         actions.append("No waivers recommended.")
 
     actions.append("Lineup: check injuries and BYE exposures.")
     actions.append("Trades: scan for both-sides gain opportunities.")
+
+    # Optional autopilot execution (waivers only)
+    if pending_actions and not constraints.get("offline"):
+        try:
+            ai_settings = get_ai_settings()
+            if not ai_settings.ai_autopilot:
+                raise RuntimeError("autopilot disabled")
+            act = pending_actions[0]
+            score = float(act.get("score") or 0)
+            bid = float(act.get("bid_amount") or 0)
+            # Use FAAB budget as cap proxy; remaining would be better when available
+            s = get_settings()
+            faab_total = s.league_key and (latest_settings_payload() or {}).get("faab_budget")
+            if can_execute_waiver(score, confidence=None, faab_bid=bid, faab_total=faab_total):
+                league_key = s.league_key
+                team_key = s.team_key
+                if not league_key or not team_key:
+                    raise RuntimeError("LEAGUE_KEY and TEAM_KEY must be set for autopilot writes")
+                xml = f"""
+<fantasy_content>
+  <transaction>
+    <type>add</type>
+    <faab_bid>{int(bid)}</faab_bid>
+    <player>
+      <player_key>{act.get('add_player_id')}</player_key>
+    </player>
+    <team_key>{team_key}</team_key>
+  </transaction>
+</fantasy_content>""".strip()
+                client = YahooClient()
+                resp = client.post_xml(f"league/{league_key}/transactions", xml)
+                actions.append(f"Autopilot: submitted waiver for {act.get('add_player_id')} (bid {int(bid)})")
+                # Clear pending since executed
+                pending_actions = []
+        except Exception as err:
+            actions.append(f"Autopilot skipped: {err}")
 
     lines = ["AI GM Brief", "", "Actions:"] + [f"- {a}" for a in actions]
     body = "\n".join(lines)
@@ -66,7 +117,7 @@ def run_agent(task: str, constraints: Dict[str, Any] | None = None) -> int:
             "task": task,
             "state": state,
             "waivers": waivers,
-            "pending_actions": [],
+            "pending_actions": pending_actions,
         },
     )
     insert_decision(run_id, kind="summary", confidence=None, payload=_json.dumps({"message_id": msg_id, "actions": actions}))
