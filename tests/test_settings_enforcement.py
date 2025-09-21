@@ -16,3 +16,5 @@ def test_scoring_requires_settings():
         compute_points("WR", {"rec": 1}, None)  # type: ignore[arg-type]
 
 
+
+

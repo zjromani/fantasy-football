@@ -289,6 +289,17 @@ def count_pending_recommendations() -> int:
         connection.close()
 
 
+def get_recommendation(rec_id: int) -> Optional[dict]:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute("SELECT * FROM recommendations WHERE id = ?", (rec_id,))
+        row = c.fetchone()
+        return dict(row) if row else None
+    finally:
+        connection.close()
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:

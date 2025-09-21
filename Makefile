@@ -13,7 +13,7 @@ venv:
 install: venv
 
 run:
-	$(VENV)/bin/uvicorn app.main:app --reload
+	$(VENV)/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
 
 test:
 	PYTHONPATH=$(PWD) $(VENV)/bin/pytest -q

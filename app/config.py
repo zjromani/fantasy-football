@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # League
     league_key: Optional[str] = None
+    team_key: Optional[str] = None
 
 
 @lru_cache()
