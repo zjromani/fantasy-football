@@ -121,6 +121,48 @@ def migrate() -> None:
             """
         )
 
+        # Telemetry tables
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task TEXT NOT NULL,
+                started_at TEXT NOT NULL DEFAULT (datetime('now')),
+                finished_at TEXT,
+                status TEXT,
+                tokens_in INTEGER,
+                tokens_out INTEGER
+            );
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tool_calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                args TEXT,
+                result TEXT,
+                error TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(run_id) REFERENCES agent_runs(id)
+            );
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                confidence REAL,
+                payload TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY(run_id) REFERENCES agent_runs(id)
+            );
+            """
+        )
+
         connection.commit()
     finally:
         connection.close()
@@ -296,6 +338,57 @@ def get_recommendation(rec_id: int) -> Optional[dict]:
         c.execute("SELECT * FROM recommendations WHERE id = ?", (rec_id,))
         row = c.fetchone()
         return dict(row) if row else None
+    finally:
+        connection.close()
+
+
+# --- Agent telemetry helpers ---
+def insert_agent_run(task: str) -> int:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute("INSERT INTO agent_runs(task) VALUES(?)", (task,))
+        connection.commit()
+        return int(c.lastrowid)
+    finally:
+        connection.close()
+
+
+def finish_agent_run(run_id: int, status: str, tokens_in: Optional[int] = None, tokens_out: Optional[int] = None) -> None:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute(
+            "UPDATE agent_runs SET finished_at=datetime('now'), status=?, tokens_in=?, tokens_out=? WHERE id=?",
+            (status, tokens_in, tokens_out, run_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def log_tool_call(run_id: int, name: str, args: str, result: Optional[str] = None, error: Optional[str] = None) -> None:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute(
+            "INSERT INTO tool_calls(run_id,name,args,result,error) VALUES(?,?,?,?,?)",
+            (run_id, name, args, result, error),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def insert_decision(run_id: int, kind: str, confidence: Optional[float], payload: str) -> None:
+    connection = get_connection()
+    try:
+        c = connection.cursor()
+        c.execute(
+            "INSERT INTO decisions(run_id,kind,confidence,payload) VALUES(?,?,?,?)",
+            (run_id, kind, confidence, payload),
+        )
+        connection.commit()
     finally:
         connection.close()
 

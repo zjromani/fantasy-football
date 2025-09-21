@@ -4,6 +4,8 @@ from typing import Dict, Any
 
 from app.inbox import notify, latest_settings_payload
 from app.ai.tools import invoke_tool
+from app.store import insert_agent_run, finish_agent_run, log_tool_call, insert_decision
+import json as _json
 
 
 def run_agent(task: str, constraints: Dict[str, Any] | None = None) -> int:
@@ -20,15 +22,24 @@ def run_agent(task: str, constraints: Dict[str, Any] | None = None) -> int:
     if not payload:
         raise RuntimeError("LeagueSettings not loaded; load settings before running the agent")
 
+    run_id = insert_agent_run(task)
     # 1) State
-    state = invoke_tool("get_league_state", {})
+    try:
+        state = invoke_tool("get_league_state", {})
+        log_tool_call(run_id, "get_league_state", args=_json.dumps({}), result=_json.dumps(state))
+    except Exception as err:
+        log_tool_call(run_id, "get_league_state", args=_json.dumps({}), error=str(err))
+        finish_agent_run(run_id, status="error")
+        raise
 
     # 2) Optionally waivers (skip if offline/testing flag)
     waivers = {"recommendations": []}
     if not constraints.get("offline"):
         try:
             waivers = invoke_tool("rank_waivers", {})
+            log_tool_call(run_id, "rank_waivers", args=_json.dumps({}), result=_json.dumps(waivers))
         except Exception as err:
+            log_tool_call(run_id, "rank_waivers", args=_json.dumps({}), error=str(err))
             waivers = {"error": str(err), "recommendations": []}
 
     # 3) Compose a concise brief
@@ -58,6 +69,8 @@ def run_agent(task: str, constraints: Dict[str, Any] | None = None) -> int:
             "pending_actions": [],
         },
     )
+    insert_decision(run_id, kind="summary", confidence=None, payload=_json.dumps({"message_id": msg_id, "actions": actions}))
+    finish_agent_run(run_id, status="ok")
     return msg_id
 
 
