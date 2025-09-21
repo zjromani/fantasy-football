@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request, HTTPException, status, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
+import json as _json
 
 from .db import get_connection, migrate, seed_example_data_if_empty
 from .store import migrate as store_migrate
@@ -63,8 +64,13 @@ def notification_detail(request: Request, notification_id: int):
     row = inbox_get(notification_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Notification not found")
+    payload_obj = {}
+    try:
+        payload_obj = _json.loads(row.get("payload") or "{}")
+    except Exception:
+        payload_obj = {}
     return templates.TemplateResponse(
-        request, "detail.html", {"n": row, "unread": inbox_unread()}
+        request, "detail.html", {"n": row, "payload_obj": payload_obj, "unread": inbox_unread()}
     )
 
 
@@ -176,6 +182,41 @@ def approve(rec_id: int):
 
     notify("info", "Recommendation approved", f"Rec {rec_id} approved.", {"id": rec_id})
     return RedirectResponse(url="/approvals", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/actions/approve_waiver")
+def action_approve_waiver(add_player_id: str = Form(...), drop_player_id: Optional[str] = Form(None), bid_amount: Optional[float] = Form(0)):
+    # Attempt Yahoo write; if not configured, just post a confirmation
+    try:
+        settings = get_settings()
+        league_key = normalize_league_key(settings.league_key)
+        team_key = settings.team_key
+        if not league_key or not team_key:
+            raise RuntimeError("LEAGUE_KEY and TEAM_KEY must be set in env for Yahoo writes")
+        xml = f"""
+<fantasy_content>
+  <transaction>
+    <type>add</type>
+    <faab_bid>{int(bid_amount or 0)}</faab_bid>
+    <player>
+      <player_key>{add_player_id}</player_key>
+    </player>
+    <team_key>{team_key}</team_key>
+  </transaction>
+</fantasy_content>""".strip()
+        client = YahooClient()
+        resp = client.post_xml(f"league/{league_key}/transactions", xml)
+        insert_transaction_raw(kind="waiver_submit", team_id=None, raw=f"request={_json.dumps({'xml': xml})}; response={resp.text}")
+        notify("waivers", "Executed waiver", f"Added {add_player_id} for {int(bid_amount or 0)} FAAB", {"add_player_id": add_player_id, "bid": bid_amount})
+    except Exception as err:
+        notify("info", "Waiver execute error", f"{err}", {"add_player_id": add_player_id, "bid": bid_amount})
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/actions/deny_waiver")
+def action_deny_waiver(add_player_id: str = Form(...)):
+    notify("waivers", "Waiver denied", f"Denied add for {add_player_id}", {"add_player_id": add_player_id})
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/approvals/{rec_id}/deny")

@@ -9,6 +9,26 @@
     <pre style="white-space:pre-wrap">{{ n["payload"] }}</pre>
   </details>
 
+  {% if payload_obj and payload_obj.get("pending_actions") %}
+  <div style="margin-top:1rem; padding:0.75rem; border:1px solid #e2e8f0; border-radius:8px;">
+    <strong>Requires approval</strong>
+    {% for act in payload_obj.get("pending_actions", []) %}
+      {% if act.get("type") == "waiver" %}
+        <form method="post" action="/actions/approve_waiver" style="display:inline; margin-right:0.5rem;">
+          <input type="hidden" name="add_player_id" value="{{ act.get('add_player_id','') }}" />
+          <input type="hidden" name="drop_player_id" value="{{ act.get('drop_player_id','') }}" />
+          <input type="hidden" name="bid_amount" value="{{ act.get('bid_amount',0) }}" />
+          <button class="btn">Approve waiver</button>
+        </form>
+        <form method="post" action="/actions/deny_waiver" style="display:inline;">
+          <input type="hidden" name="add_player_id" value="{{ act.get('add_player_id','') }}" />
+          <button class="btn" style="background:#b91c1c;">Deny</button>
+        </form>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <form method="post" action="/notifications/{{ n["id"] }}/read">
     <button class="btn" {% if n["is_read"] %}disabled{% endif %}>Mark as read</button>
   </form>
