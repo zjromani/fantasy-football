@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, status, Form
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from contextlib import asynccontextmanager
 
 from .db import get_connection, migrate, seed_example_data_if_empty
 from .store import migrate as store_migrate
@@ -19,16 +20,19 @@ from .config import get_settings
 from .utils import normalize_league_key
 
 
-app = FastAPI(title="Fantasy Bot")
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-
-
-@app.on_event("startup")
-def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     migrate()
     # Ensure full app schema exists (players, teams, recommendations, etc.)
     store_migrate()
     seed_example_data_if_empty()
+    yield
+
+
+app = FastAPI(title="Fantasy Bot", lifespan=lifespan)
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+
+
 
 
 @app.get("/health")

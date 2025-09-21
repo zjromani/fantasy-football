@@ -33,8 +33,9 @@ make lint
 Copy the example and fill in Yahoo OAuth secrets and your league key.
 ```bash
 cp .env.example .env
-# set YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_REDIRECT_URI, LEAGUE_KEY
+# set YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_REDIRECT_URI, LEAGUE_KEY, TEAM_KEY
 # LEAGUE_KEY accepts either nfl.l.<id> or just the numeric <id>
+# TEAM_KEY identifies your team for writes, e.g., nfl.l.<id>.t.<team_id>
 ```
 
 Optional:
@@ -207,6 +208,15 @@ PY
 ```
 
 ### Trade Advisor v1 (demo)
+## Yahoo writes (approvals)
+
+Approving a waiver recommendation will attempt a Yahoo write if both env vars are set:
+
+- `LEAGUE_KEY` (e.g., nfl.l.10530)
+- `TEAM_KEY` (e.g., nfl.l.10530.t.7)
+
+The app submits a minimal XML payload via `POST /fantasy/v2/league/{LEAGUE_KEY}/transactions` and logs the request/response to `transactions_raw`. Writes are only attempted on Approve; Deny cancels the item.
+
 ```bash
 python - <<'PY'
 from app.models import LeagueSettings
