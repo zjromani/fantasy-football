@@ -82,8 +82,10 @@
         </div>
 
         <!-- Actions Button -->
-        <button onclick="scrollToActions()" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center">
+        <button onclick="scrollToActions()" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center group">
           <span id="coach-actions-text">All Set</span>
+          <!-- TODO: Add ⌘K hint and wire up command palette -->
+          <span class="hidden group-hover:inline-block ml-2 text-xs text-teal-200">⌘K</span>
         </button>
       </div>
 
@@ -126,8 +128,11 @@
       const faab = data.faab_remaining !== null && data.faab_remaining !== undefined ? data.faab_remaining : '--';
       document.getElementById('coach-faab').textContent = `$${faab}`;
 
-      // Update sync status
-      document.getElementById('coach-sync').textContent = data.last_sync || 'Never';
+      // Update sync status with staleness indicator
+      const lastSync = data.last_sync || 'Never';
+      document.getElementById('coach-sync').textContent = lastSync;
+
+      // TODO: Add staleness badge (e.g., "6h old" in amber if > 4h old)
 
       // Update sync icon (add spin if syncing)
       const syncIcon = document.getElementById('coach-sync-icon');
@@ -145,7 +150,7 @@
       if (data.pending_count > 0) {
         badge.classList.remove('hidden');
         badge.textContent = data.pending_count;
-        actionsText.textContent = `${data.pending_count} Action${data.pending_count !== 1 ? 's' : ''}`;
+        actionsText.textContent = `${data.pending_count} Decision${data.pending_count !== 1 ? 's' : ''}`;
         actionsBtn.classList.remove('bg-teal-600', 'hover:bg-teal-700');
         actionsBtn.classList.add('bg-orange-600', 'hover:bg-orange-700');
       } else {
@@ -189,6 +194,7 @@
 </script>
 
 <!-- League Settings Banner -->
+<!-- TODO: Make this collapsible into a right rail / info drawer to reduce visual noise -->
 {% if league_settings and league_settings.get("scoring") %}
 <div class="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-lg p-6 mb-6 shadow-sm slide-in">
   <div class="flex items-start justify-between">
@@ -421,23 +427,44 @@
   </div>
 </div>
 
-<!-- Action Cards: Pending Decisions (Owner/GM UX) -->
+<!-- ========================================
+     OWNER INBOX: AI-FIRST DECISION SURFACE
+     ======================================== -->
+
+<!-- TODO: Add Command Palette (⌘K) - global actions for "optimize lineup", "scan waivers", "scout opponent" -->
+<!-- TODO: Add batch actions - "Apply all lineup changes (X)" with Undo -->
+<!-- TODO: Add Player Drawer - click any player → slide-over with news, projections, trade value -->
+<!-- TODO: Add Auto-Loop toggles - "Auto Lineup Check (Thu AM)", "Auto Waiver Scan (Tue)" -->
+<!-- TODO: Add Weekly Cadence Banner - "Tue: Waivers; Thu: Lineup; Sun: Inactives; Mon: Review" with auto toggles -->
+
+<!-- Owner Inbox: Prioritized Decisions from Your GM -->
 {% import 'components/action_card.html' as action_card %}
 {% if pending_recs and pending_recs|length > 0 %}
 <div id="actions" class="mb-8">
   <div class="flex items-center justify-between mb-4">
-    <h2 class="text-2xl font-bold text-slate-900 flex items-center">
-      <svg class="w-6 h-6 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+    <h2 class="text-3xl font-bold text-slate-900 flex items-center">
+      <svg class="w-7 h-7 mr-3 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
       </svg>
-      Awaiting Your Decision
-      <span class="ml-3 px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-bold">
+      Owner Inbox
+      <span class="ml-3 px-3 py-1 bg-teal-100 text-teal-800 rounded-full text-base font-bold">
         {{ pending_recs|length }}
       </span>
     </h2>
-    <a href="/approvals" class="text-sm text-teal-600 hover:text-teal-700 font-medium">
-      View All →
+    <a href="/approvals" class="text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center">
+      View All
+      <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+      </svg>
     </a>
+  </div>
+
+  <!-- Owner Mode Description -->
+  <div class="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-lg px-4 py-3 mb-4">
+    <p class="text-sm text-slate-700">
+      <span class="font-bold text-teal-900">Owner Mode:</span> Your AI GM has analyzed the latest data and prepared {{ pending_recs|length }} recommendation{{ 's' if pending_recs|length != 1 else '' }} for your approval.
+      <span class="text-slate-500">• Approve, decline, or modify each decision below.</span>
+    </p>
   </div>
 
   <div class="space-y-4">
@@ -459,16 +486,16 @@
 </div>
 {% endif %}
 
-<!-- Activity Feed -->
-<div class="mt-8">
+<!-- Recent Activity & Historical Log -->
+<div class="mt-12">
   <div class="flex items-center justify-between mb-4">
-    <h2 class="text-xl font-bold text-slate-900 flex items-center">
-      <svg class="w-5 h-5 mr-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <h2 class="text-lg font-semibold text-slate-700 flex items-center">
+      <svg class="w-5 h-5 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
       </svg>
-      Activity Feed
+      Recent Activity
       {% if unread > 0 %}
-      <span class="ml-3 px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">
+      <span class="ml-3 px-2 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-bold">
         {{ unread }} new
       </span>
       {% endif %}
