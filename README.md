@@ -357,13 +357,16 @@ Open an Inbox message and follow the summary to trace the run.
 ## Known Limitations
 
 ### Waiver Wire Analysis
-- **Yahoo API Limit**: Free agents endpoint (`status=A`) caps at 25 players regardless of count parameter
+- **FIXED: Yahoo API Limit** ✅ - Now using pagination + position-specific queries to fetch 60+ players (was 25)
+- **FIXED: Position Diversity** ✅ - Prioritizes RB/WR over QB, max 2 per position (was all QBs)
 - **No Projections API**: The free Fantasy Football Data Pros API doesn't have current week data. System uses fallback logic:
-  - High ownership (>50%) = position baseline (QB: 18pts, RB: 12pts, WR: 10pts, TE: 8pts)
-  - Low ownership (<50%) = 5.0 pts (likely backup)
+  - Position baselines: QB: 18pts, RB: 12pts, WR: 10pts, TE: 8pts
   - Injured bench players (O/D/IR) = 0.0 pts
-- **Recommendations Quality**: Without real projections, recommendations are limited. Best used for manual review guidance.
-- **Solution**: Integrate a paid projections API (FantasyPros, ESPN, etc.) or scrape weekly rankings for better accuracy.
+  - Yahoo's Add/Drop rank (AR sort) for quality order
+- **Known Issue: Suggests dropping elite injured players** - System only looks at current week value
+  - Example: Suggests dropping Cooper Kupp (IR) or Lamar Jackson (Out)
+  - Needs rest-of-season rankings or player tier system
+- **Solution**: Integrate FantasyPros ROS rankings or create a do-not-drop list for elite players
 
 ### Projections
 - Currently using a pluggable framework (see `app/projections.py`)
