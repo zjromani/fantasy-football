@@ -137,11 +137,11 @@ def analyze_waivers_enhanced(
     for fa in free_agents:
         name = fa["name"]
         position = fa["position"]
-        
+
         # Skip non-fantasy positions
         if position not in ["QB", "RB", "WR", "TE", "K", "DEF"]:
             continue
-        
+
         # Get projection
         proj_obj = proj_dict.get(name.lower())
         if proj_obj:
@@ -162,7 +162,7 @@ def analyze_waivers_enhanced(
             else:
                 # Likely a backup or low-value player
                 projection = 5.0
-        
+
         # Skip very low projections (not fantasy-relevant)
         # Raise threshold to filter out more low-value players
         if projection < 8.0:
@@ -195,7 +195,7 @@ def analyze_waivers_enhanced(
                         # Assume bench players are worth ~40% of a starter
                         position_baseline = {"QB": 18, "RB": 12, "WR": 10, "TE": 8, "K": 8, "DEF": 8}
                         bp = position_baseline.get(position, 10.0) * 0.4
-                
+
                 bench_with_proj.append((bench_p, bp))
 
             # Sort by projection (lowest first)
@@ -264,8 +264,15 @@ def post_enhanced_waivers_to_inbox(
 ) -> int:
     """Post enhanced waiver recommendations to Inbox."""
     if not recommendations:
-        return notify("waivers", "No waiver targets",
-                     "No viable free agents with projections better than your bench.", {})
+        return notify("waivers", "⚠️ No Waiver Recommendations", 
+                     "No viable free agents found. This could be because:\n\n"
+                     "• Yahoo API limited to 25 free agents (API restriction)\n"
+                     "• No projections API configured (using fallback logic)\n"
+                     "• All available players below 8.0 pts threshold\n"
+                     "• No upgrades over current bench players\n\n"
+                     "💡 **Manual Review Recommended:**\nCheck Yahoo's 'Add Players' page "
+                     "for recently trending players, injuries creating opportunities, or "
+                     "breakout performances from last week.", {})
 
     # Build detailed message
     lines = [f"🎯 Top {len(recommendations)} Waiver Targets for Week {week}\n"]
