@@ -526,7 +526,8 @@ def action_find_trades():
     Owner just clicks one button - GM does all the analysis.
     """
     try:
-        from .trades import propose_trades, TradeProposal, Player, TeamState
+        from .trades import propose_trades
+        from .trade_builder import build_team_state
         
         payload = latest_settings_payload()
         if not payload:
@@ -536,6 +537,10 @@ def action_find_trades():
         settings = LeagueSettings(**payload)
         cfg = get_settings()
         my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
+        
+        if not my_team_id:
+            notify("info", "No team configured", "Set TEAM_KEY in environment to identify your team.", {})
+            return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
         
         conn = get_connection()
         try:
@@ -554,32 +559,101 @@ def action_find_trades():
                 notify("info", "No teams found", "No opponent teams available for trade analysis.", {})
                 return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
             
-            # Build my team state (simplified - using placeholder data)
-            # TODO: Build proper TeamState from roster/matchups/transactions data
-            my_roster_players = []
+            # Build my team state
+            my_team_state = build_team_state(my_team_id, settings, current_week)
             
+            if len(my_team_state.roster) == 0:
+                notify("info", "No roster data", "Run 'Sync Yahoo Data' to load roster information.", {})
+                return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+            
+            # Scan all teams for trade opportunities
             all_proposals = []
             
-            # For now, just notify that we're scanning
-            # Full implementation requires building TeamState from DB data
-            team_names = ", ".join([t["name"] for t in opponent_teams[:3]])
-            if len(opponent_teams) > 3:
-                team_names += f" and {len(opponent_teams) - 3} others"
+            for opp in opponent_teams:
+                opponent_state = build_team_state(opp["id"], settings, current_week)
+                
+                if len(opponent_state.roster) == 0:
+                    continue
+                
+                # Use existing trades.py logic to find mutual benefit trades
+                proposals = propose_trades(
+                    settings=settings,
+                    team_a=my_team_state,
+                    team_b=opponent_state,
+                    top_k=2  # Get top 2 from each matchup
+                )
+                
+                # Attach opponent info for display
+                for p in proposals:
+                    p.opponent_name = opp["name"]
+                    p.opponent_manager = opp["manager"]
+                    # Convert player IDs to names for display
+                    send_names = [player.name for player in my_team_state.roster if player.id in p.send]
+                    receive_names = [player.name for player in opponent_state.roster if player.id in p.receive]
+                    p.send_names = send_names
+                    p.receive_names = receive_names
+                
+                all_proposals.extend(proposals)
             
-            notify(
-                "info",
-                "Trade Analysis Complete",
-                f"GM scanned {len(opponent_teams)} teams: {team_names}. "
-                "Full trade proposal generation with manager tendencies analysis coming soon. "
-                "Backend needs roster/transaction data integration.",
-                {}
-            )
+            if not all_proposals:
+                notify(
+                    "trades",
+                    "No Trade Opportunities Found",
+                    f"GM scanned {len(opponent_teams)} teams but found no mutually beneficial trades. "
+                    "This could mean rosters are balanced or no clear upgrade paths exist. Try again after waivers or injuries.",
+                    {}
+                )
+                return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+            
+            # Sort by value score: acceptance_odds * both_sides_gain
+            # This prioritizes trades that are LIKELY TO BE ACCEPTED and VALUABLE
+            best_proposals = sorted(
+                all_proposals,
+                key=lambda p: (p.acceptance_odds or 0.5) * (p.both_sides_gain or 0),
+                reverse=True
+            )[:5]  # Keep top 5 overall
+            
+            # Build manager intel summary
+            intel_summary = []
+            seen_managers = set()
+            for p in best_proposals:
+                mgr = p.opponent_manager
+                if mgr not in seen_managers:
+                    seen_managers.add(mgr)
+                    rate = (p.acceptance_odds or 0.5) * 100
+                    intel_summary.append(
+                        f"{mgr} ({p.opponent_name}): {rate:.0f}% likely to accept trades"
+                    )
+            
+            # Create trade recommendations in Owner Inbox
+            for i, p in enumerate(best_proposals[:3]):  # Show top 3 in notification
+                send_str = " + ".join(p.send_names) if hasattr(p, 'send_names') else ", ".join(p.send)
+                receive_str = " + ".join(p.receive_names) if hasattr(p, 'receive_names') else ", ".join(p.receive)
+                
+                notify(
+                    kind="trades",
+                    title=f"Trade with {p.opponent_name}: {len(p.send)}-for-{len(p.receive)}",
+                    body=f"Send {send_str} → Get {receive_str}. {p.rationale}",
+                    payload={
+                        "proposals": [{
+                            "send": p.send_names if hasattr(p, 'send_names') else p.send,
+                            "receive": p.receive_names if hasattr(p, 'receive_names') else p.receive,
+                            "acceptance_odds": p.acceptance_odds,
+                            "both_sides_gain": p.both_sides_gain,
+                            "rationale": p.rationale,
+                            "opponent_name": p.opponent_name,
+                            "opponent_manager": p.opponent_manager,
+                        }],
+                        "manager_tendencies": [intel_summary[0]] if intel_summary else [],
+                    }
+                )
             
         finally:
             conn.close()
             
     except Exception as e:
-        notify("info", "Trade finder error", f"Failed to scan for trades: {e}", {})
+        import traceback
+        notify("info", "Trade finder error", f"Failed to scan for trades: {e}\n{traceback.format_exc()[:200]}", {})
     
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
