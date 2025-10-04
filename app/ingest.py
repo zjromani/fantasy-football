@@ -64,11 +64,11 @@ def fetch_league_bundle(
 ) -> Dict[str, Any]:
     cd = Path(cache_dir or ".cache")
     bundle: Dict[str, Any] = {}
-    
+
     # First get league data to find current week
     league_data = _get_or_fetch_json(client, f"league/{league_key}", params={"format": "json"}, cache_dir=cd)
     bundle["league"] = league_data
-    
+
     # Extract current week
     current_week = None
     try:
@@ -80,7 +80,7 @@ def fetch_league_bundle(
                 current_week = league_obj.get("current_week")
     except:
         current_week = None
-    
+
     # Endpoints chosen to cover core artifacts
     endpoints = {
         "teams": f"league/{league_key}/teams",
@@ -89,24 +89,24 @@ def fetch_league_bundle(
         "standings": f"league/{league_key}/standings",
         "transactions": f"league/{league_key}/transactions",
     }
-    
+
     # Standard endpoints (except rosters which need special handling)
     for name, ep in endpoints.items():
         bundle[name] = _get_or_fetch_json(client, ep, params={"format": "json"}, cache_dir=cd)
-    
+
     # For rosters with actual lineup positions, we need to fetch individual team rosters
     # because league-level teams;out=roster doesn't include selected_position data
     # To avoid N API calls, we'll fetch:
     # 1. All rosters via teams;out=roster (player lists without positions)
     # 2. Individual team roster for the user's team to get their lineup
-    
+
     roster_ep = f"league/{league_key}/teams;out=roster"
     roster_params = {"format": "json"}
     if current_week:
         roster_params["week"] = str(current_week)
-    
+
     bundle["rosters"] = _get_or_fetch_json(client, roster_ep, params=roster_params, cache_dir=cd)
-    
+
     # Now fetch YOUR team's roster with lineup positions
     # Get team_key from env
     from .config import get_settings
@@ -116,7 +116,7 @@ def fetch_league_bundle(
         team_roster_params = {"format": "json", "week": str(current_week)}
         print(f"[INGEST] Fetching your team's lineup for week {current_week}")
         bundle["my_roster"] = _get_or_fetch_json(client, team_roster_ep, params=team_roster_params, cache_dir=cd)
-    
+
     return bundle
 
 
@@ -348,7 +348,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                 status = player.get("status")
                 if team_id and pid and week:
                     upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
-    
+
     # My Roster (with actual lineup positions)
     my_roster = bundle.get("my_roster")
     if isinstance(my_roster, dict):
@@ -364,21 +364,21 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                     week = int(week)
                 elif not isinstance(week, int):
                     week = 0
-                
+
                 roster_0 = roster_data.get("0", {})
                 players_data = roster_0.get("players", {})
-                
+
                 for player_wrap in _extract_items(players_data):
                     player_list = player_wrap.get("player") if isinstance(player_wrap, dict) else None
                     if not isinstance(player_list, list):
                         continue
-                    
+
                     # Yahoo's structure: player = [[{player details...}], {selected_position: ...}, {...}]
                     # The first element is a list of dicts with player data
                     # The second element (if present) contains selected_position
                     player = _flatten_yahoo_list(player_list[0] if len(player_list) > 0 and isinstance(player_list[0], list) else player_list)
                     pid = str(player.get("player_id") or player.get("player_key") or "")
-                    
+
                     # Extract selected_position from index 1 of player_list
                     selected = {}
                     if len(player_list) > 1 and isinstance(player_list[1], dict):
@@ -389,10 +389,10 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                                 selected = _flatten_yahoo_list(selected_list)
                             elif isinstance(selected_list, dict):
                                 selected = selected_list
-                    
+
                     slot = selected.get("position") if isinstance(selected, dict) else None
                     status = player.get("status")
-                    
+
                     if team_id and pid and week and slot:
                         # UPDATE the roster entry with the real lineup slot
                         upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
