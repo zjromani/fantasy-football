@@ -10,6 +10,7 @@ from .ai.client import ask
 from .ai.config import get_ai_settings
 from .config import get_settings
 from .news import fetch_all_news, get_injury_news
+from .projections import get_projections, get_player_projection
 
 
 def _get_league_context(settings: LeagueSettings) -> Dict:
@@ -65,10 +66,10 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
             "SELECT week, team_id, opponent_id FROM matchups ORDER BY week DESC LIMIT 12"
         )
         matchups = [{"week": row[0], "team": row[1], "opponent": row[2]} for row in cur.fetchall()]
-        
+
         # Determine current week from most recent matchup
         current_week = matchups[0]["week"] if matchups else 1
-        
+
         # Get all rostered players (to help AI avoid recommending rostered players)
         cur.execute(
             "SELECT DISTINCT p.name, p.team FROM rosters r "
@@ -112,17 +113,32 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
             if item.category != "injury":  # Already got injuries above
                 news_summary.append(f"- [{item.source}] {item.title}")
 
-        # Build enhanced context with player details
+        # Build enhanced context with player details and projections
+        current_week = context.get('current_week', 1)
         roster_detail = []
         for p in context['my_roster']:
-            roster_detail.append({
+            player_info = {
                 "name": p.get('name'),
                 "position": p.get('position'),
                 "nfl_team": p.get('nfl_team', 'FA'),
                 "bye_week": p.get('bye_week'),
                 "slot": p.get('slot'),
                 "status": p.get('status') or "Active"
-            })
+            }
+            
+            # Add projection if available
+            if p.get('name') and p.get('position'):
+                proj = get_player_projection(p['name'], current_week, p['position'])
+                if proj:
+                    scoring_type = "ppr" if settings.scoring.ppr == 1 else ("half_ppr" if settings.scoring.ppr == 0.5 else "standard")
+                    if scoring_type == "ppr":
+                        player_info["projected_pts"] = proj.fantasy_points_ppr
+                    elif scoring_type == "half_ppr":
+                        player_info["projected_pts"] = proj.fantasy_points_half_ppr
+                    else:
+                        player_info["projected_pts"] = proj.fantasy_points_standard
+            
+            roster_detail.append(player_info)
 
         # Build prompt for OpenAI
         prompt = f"""You are an expert fantasy football advisor for NFL Week {context.get('current_week', '?')}.
@@ -135,6 +151,7 @@ LEAGUE SETTINGS:
 
 YOUR CURRENT ROSTER ({len(roster_detail)} players):
 {_json.dumps(roster_detail, indent=2)}
+Note: projected_pts shown where available (may be None if projections not configured)
 
 LATEST NFL NEWS (use this for injury/status updates):
 {chr(10).join(news_summary)}

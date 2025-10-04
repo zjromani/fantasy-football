@@ -20,6 +20,7 @@ from .store import record_snapshot, list_recommendations, set_recommendation_sta
 from .config import get_settings
 from .utils import normalize_league_key
 from .news import fetch_all_news
+from .projections import get_projections
 
 
 @asynccontextmanager
@@ -48,6 +49,19 @@ def api_news(limit: int = 30):
     from fastapi.responses import JSONResponse
     items = fetch_all_news(max_age_minutes=20, limit_per_source=min(20, limit))
     return JSONResponse({"items": [it.to_dict() for it in items[:limit]]})
+
+
+@app.get("/api/projections")
+def api_projections(week: int, position: Optional[str] = None):
+    """Get weekly player projections from FantasyPros."""
+    from fastapi.responses import JSONResponse
+    projections = get_projections(week, position, use_cache=True, max_age_hours=24)
+    return JSONResponse({
+        "week": week,
+        "position": position,
+        "count": len(projections),
+        "projections": [p.to_dict() for p in projections[:100]]  # Limit response size
+    })
 
 
 @app.get("/")

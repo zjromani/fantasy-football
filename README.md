@@ -43,6 +43,8 @@ Optional:
 - `OPENAI_API_KEY` for AI-powered recommendations (get from https://platform.openai.com/api-keys)
 - `AI_AUTOPILOT=false` set to `true` to auto-execute high-confidence recommendations
 
+**Note on Projections**: The app includes a projections module (`app/projections.py`) that you can plug your own source into. Free projection APIs are hard to find - most require paid subscriptions. The AI works great without projections by using real-time news, Yahoo player stats, and matchup data instead.
+
 ## Ngrok for Yahoo OAuth
 
 Yahoo requires an HTTPS, publicly reachable Redirect URI. The app runs locally on `http://localhost:8000`, which Yahoo won’t accept. Ngrok exposes your local port with a public HTTPS URL.
