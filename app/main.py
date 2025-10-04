@@ -79,13 +79,14 @@ def list_notifications(request: Request, kind: Optional[str] = None):
         try:
             cfg = get_settings()
             my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
-            
+
             cur = conn.cursor()
             cur.execute("SELECT id, name, manager FROM teams WHERE id != ? ORDER BY name", (my_team_id,))
             for row in cur.fetchall():
                 teams_list.append({"id": row[0], "name": row[1], "manager": row[2]})
-            
+
             # Get my current lineup (deduplicated, sorted by position)
+            # Estimate starters vs bench based on typical roster composition
             cur.execute("SELECT MAX(week) FROM matchups")
             current_week_result = cur.fetchone()
             current_week = current_week_result[0] if current_week_result else 1
@@ -109,14 +110,31 @@ def list_notifications(request: Request, kind: Optional[str] = None):
                     p.name
             """, (my_team_id, current_week))
             
+            # Categorize as starter or bench based on position limits
+            pos_settings = settings_payload.get("roster_slots", {}) if settings_payload else {}
+            pos_count = {}
+            
             for row in cur.fetchall():
+                position = row[1]
+                count = pos_count.get(position, 0)
+                
+                # Determine if starter based on typical roster slots
+                max_starters = pos_settings.get(position, {
+                    'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DEF': 1
+                }.get(position, 0))
+                
+                is_starter = count < max_starters
+                
                 my_lineup.append({
                     "name": row[0],
                     "position": row[1],
                     "team": row[2] or "FA",
                     "bye_week": row[3],
-                    "status": row[4] or "Active"
+                    "status": row[4] or "Active",
+                    "is_starter": is_starter
                 })
+                
+                pos_count[position] = count + 1
         except:
             pass
         finally:
