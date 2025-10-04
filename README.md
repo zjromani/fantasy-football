@@ -40,6 +40,8 @@ cp .env.example .env
 
 Optional:
 - `DB_PATH` to override the sqlite file location (defaults to `./app.db`).
+- `OPENAI_API_KEY` for AI-powered recommendations (get from https://platform.openai.com/api-keys)
+- `AI_AUTOPILOT=false` set to `true` to auto-execute high-confidence recommendations
 
 ## Ngrok for Yahoo OAuth
 

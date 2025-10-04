@@ -1,65 +1,189 @@
 from __future__ import annotations
 
 from typing import Dict, List, Tuple
+import json as _json
 
 from .inbox import notify
 from .models import LeagueSettings
+from .store import get_connection
+from .ai.client import ask
+from .ai.config import get_ai_settings
+from .config import get_settings
+
+
+def _get_league_context(settings: LeagueSettings) -> Dict:
+    """Fetch current league state from database."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+
+        # Get user's team
+        cfg = get_settings()
+        my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
+
+        # Teams
+        cur.execute("SELECT id, name, manager FROM teams")
+        teams = [{"id": row[0], "name": row[1], "manager": row[2]} for row in cur.fetchall()]
+
+        # My roster (current week)
+        my_roster = []
+        if my_team_id:
+            cur.execute(
+                "SELECT r.player_id, p.name, p.position, r.slot, r.status FROM rosters r "
+                "LEFT JOIN players p ON r.player_id = p.id "
+                "WHERE r.team_id = ? ORDER BY r.week DESC LIMIT 20",
+                (my_team_id,)
+            )
+            my_roster = [
+                {"id": row[0], "name": row[1], "position": row[2], "slot": row[3], "status": row[4]}
+                for row in cur.fetchall()
+            ]
+
+        # Recent transactions (last 20)
+        cur.execute(
+            "SELECT kind, team_id, raw FROM transactions_raw ORDER BY id DESC LIMIT 20"
+        )
+        transactions = []
+        for row in cur.fetchall():
+            try:
+                tx_data = _json.loads(row[2]) if row[2] else {}
+                transactions.append({"kind": row[0], "team_id": row[1], "data": tx_data})
+            except:
+                pass
+
+        # Matchups (current week)
+        cur.execute(
+            "SELECT week, team_id, opponent_id FROM matchups ORDER BY week DESC LIMIT 12"
+        )
+        matchups = [{"week": row[0], "team": row[1], "opponent": row[2]} for row in cur.fetchall()]
+
+        return {
+            "teams": teams,
+            "my_team_id": my_team_id,
+            "my_roster": my_roster,
+            "transactions": transactions,
+            "matchups": matchups,
+            "settings": settings.model_dump(),
+        }
+    finally:
+        conn.close()
 
 
 def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
-    # Deterministic brief content for now
-    title = "Tuesday GM Brief"
-    actions = [
-        "Confirm injuries and practice reports",
-        "Review waiver priorities and FAAB ranges",
-        "Scout two trade partners for needs fit",
-    ]
-    lineup = [
-        "No lineup changes proposed — revisit Thu AM after practice reports.",
-    ]
-    waivers = [
-        "1) RB Target — FAAB 8–12",
-        "2) WR Streamer — FAAB 3–6",
-        "3) TE Upside — FAAB 1–3",
-        "4) QB Bye cover — FAAB 0–2",
-        "5) DEF Matchup — FAAB 0–1",
-    ]
-    trades = [
-        "1) 1-for-1 swap that improves both teams (details in Trades)",
-        "2) 2-for-2 package balancing depth and needs",
-        "3) Backup-for-upgrade offer with bye relief",
-    ]
-    survivor = "Survivor: CHI over ARI (home, trench + turnover edge)"
+    """Generate AI-powered GM brief using OpenAI."""
+    context = _get_league_context(settings)
 
-    lines: List[str] = []
-    lines.append("Actions:")
-    for a in actions:
-        lines.append(f"- {a}")
-    lines.append("")
-    lines.append("Lineup:")
-    for l in lineup:
-        lines.append(f"- {l}")
-    lines.append("")
-    lines.append("Waivers:")
-    for w in waivers:
-        lines.append(f"- {w}")
-    lines.append("")
-    lines.append("Trades:")
-    for t in trades:
-        lines.append(f"- {t}")
-    lines.append("")
-    lines.append(survivor)
+    try:
+        # Check if OpenAI is configured
+        ai_settings = get_ai_settings()
 
-    body = "\n".join(lines)
-    payload = {
-        "actions": actions,
-        "lineup": lineup,
-        "waivers": waivers,
-        "trades": trades,
-        "survivor": survivor,
-        "settings": settings.model_dump(),
-    }
-    return title, body, payload
+        # Build prompt for OpenAI
+        prompt = f"""You are an expert fantasy football advisor. Generate a concise GM brief for the user's team.
+
+League Settings:
+- Scoring: PPR={settings.scoring.ppr}
+- Roster Slots: {settings.roster_slots}
+- FAAB Budget: ${settings.faab_budget or 100}
+
+Current Team Context:
+- Team ID: {context['my_team_id']}
+- Roster Size: {len(context['my_roster'])} players
+- Recent Activity: {len(context['transactions'])} transactions
+
+Your Roster:
+{_json.dumps(context['my_roster'], indent=2)}
+
+Recent League Transactions:
+{_json.dumps(context['transactions'][:5], indent=2)}
+
+Current Matchups:
+{_json.dumps(context['matchups'][:6], indent=2)}
+
+Generate a brief with these sections:
+1. **Actions** (3-4 items): Immediate action items for this week
+2. **Lineup** (2-3 items): Sit/start recommendations based on roster and matchups
+3. **Waivers** (Top 3-5): Specific available players to target with FAAB ranges based on team needs
+4. **Trades** (2-3 items): Trade opportunities with league managers
+5. **Key Insights**: Any important trends or alerts
+
+Format as markdown with clear sections. Be specific with player names from the roster and reasoning."""
+
+        # Call OpenAI
+        response = ask(
+            messages=[{"role": "user", "content": prompt}],
+            model="gpt-4o-mini",
+            max_tokens=1500,
+            temperature=0.7,
+        )
+
+        ai_body = response.get("content", "AI brief generation failed")
+
+        # Parse sections for payload (best effort)
+        payload = {
+            "ai_generated": True,
+            "context": context,
+            "raw_response": ai_body,
+            "settings": settings.model_dump(),
+        }
+
+        return "🤖 AI GM Brief", ai_body, payload
+
+    except Exception as e:
+        # Fallback to data-driven brief if AI fails
+        return _build_data_brief(settings, context, str(e))
+
+
+def _build_data_brief(settings: LeagueSettings, context: Dict, error: str) -> Tuple[str, str, Dict]:
+    """Data-driven brief when AI is unavailable."""
+
+    # Build intelligent fallback using actual data
+    body_lines = [
+        "## 📊 GM Brief",
+        "",
+        "### Your Team",
+        f"- **Roster:** {len(context['my_roster'])} players",
+        f"- **Scoring:** PPR={settings.scoring.ppr}",
+        f"- **FAAB Budget:** ${settings.faab_budget or 100}",
+        "",
+        "### Current Roster",
+    ]
+
+    # Group by position
+    by_pos = {}
+    for p in context['my_roster']:
+        pos = p.get('position') or 'UNKNOWN'
+        by_pos.setdefault(pos, []).append(p)
+
+    for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']:
+        players = by_pos.get(pos, [])
+        if players:
+            names = [p.get('name', 'Unknown') for p in players if p.get('name')]
+            if names:
+                body_lines.append(f"- **{pos}:** {', '.join(names)}")
+
+    body_lines.extend([
+        "",
+        "### Recent League Activity",
+        f"- {len(context['transactions'])} transactions in database",
+        f"- {len(context['matchups'])} matchups tracked",
+        "",
+        "### Actions",
+        "- Review your roster for injury updates",
+        "- Check waiver wire for breakout candidates",  
+        "- Scout trade opportunities with league managers",
+        "",
+        "---",
+    ])
+    
+    # Add helpful message based on error type
+    if "insufficient_quota" in error or "RateLimitError" in error:
+        body_lines.append("_💡 OpenAI API quota exceeded. Add credits at https://platform.openai.com/account/billing_")
+    elif "OPENAI_API_KEY" in error and "required" in error:
+        body_lines.append("_💡 To enable AI-powered insights, set `OPENAI_API_KEY` in your .env file_")
+    else:
+        body_lines.append(f"_⚠️ AI unavailable: {error[:80]}_" if len(error) < 80 else f"_⚠️ AI unavailable: {error[:80]}..._")
+
+    return "📊 GM Brief", "\n".join(body_lines), {"data_driven": True, "error": error, "context": context}
 
 
 def post_gm_brief(settings: LeagueSettings) -> int:

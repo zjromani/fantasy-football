@@ -109,7 +109,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
 
     def _extract_items(data: Any, *path: str) -> list:
         """Navigate Yahoo's fantasy_content.league.X structure and extract numeric-keyed items.
-        
+
         Yahoo API returns: fantasy_content.league = [league_obj, sub_resource]
         where sub_resource contains the actual collection (teams, players, etc.)
         """
@@ -132,7 +132,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                     return []
             else:
                 return []
-        
+
         if isinstance(current, list):
             return current
         elif isinstance(current, dict):

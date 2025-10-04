@@ -3,8 +3,11 @@ from pydantic import Field, ValidationError
 
 
 class AISettings(BaseSettings):
-    # Do not auto-load .env here to keep tests deterministic; rely on real env
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
     ai_autopilot: bool = Field(False, alias="AI_AUTOPILOT")

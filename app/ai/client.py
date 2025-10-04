@@ -13,15 +13,37 @@ def _client() -> OpenAI:
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=0.5, min=0.5, max=4))
-def ask(prompt: str) -> str:
-    """Minimal wrapper that returns a string from a trivial prompt."""
+def ask(
+    messages: list[dict[str, str]] | None = None,
+    prompt: str | None = None,
+    model: str = "gpt-4o-mini",
+    temperature: float = 0.2,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    """Call OpenAI with messages or a simple prompt. Returns dict with 'content' key."""
     client = _client()
-    # Use Responses API style via chat.completions for broad compatibility
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-    )
-    return (resp.choices[0].message.content or "").strip()
+    
+    # Support both old prompt-style and new messages-style
+    if messages is None:
+        if prompt is None:
+            raise ValueError("Either 'messages' or 'prompt' must be provided")
+        messages = [{"role": "user", "content": prompt}]
+    
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    if max_tokens:
+        kwargs["max_tokens"] = max_tokens
+    
+    resp = client.chat.completions.create(**kwargs)
+    content = (resp.choices[0].message.content or "").strip()
+    
+    return {
+        "content": content,
+        "model": model,
+        "usage": resp.usage.model_dump() if resp.usage else {},
+    }
 
 
