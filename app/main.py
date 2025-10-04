@@ -173,7 +173,7 @@ def dashboard_summary():
 def analytics_league_health():
     """
     League Health Dashboard: Power rankings, positional grades, and trade targets.
-    
+
     Returns comprehensive analytics for all teams in the league:
     - Team Power Index rankings
     - Positional depth grades (A/B/C/D/F)
@@ -182,30 +182,30 @@ def analytics_league_health():
     """
     from fastapi.responses import JSONResponse
     from .analytics import league_health_snapshot
-    
+
     payload = latest_settings_payload()
     if not payload:
         return JSONResponse(
             {"error": "No league data available. Run 'Sync Yahoo Data' first."},
             status_code=404
         )
-    
+
     settings = LeagueSettings(**payload)
     cfg = get_settings()
     my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
-    
+
     conn = get_connection()
     try:
         cur = conn.cursor()
-        
+
         # Get current week
         cur.execute("SELECT MAX(week) FROM matchups")
         result = cur.fetchone()
         current_week = result[0] if result and result[0] else 1
-        
+
         # Generate league snapshot
         snapshot = league_health_snapshot(settings, current_week, my_team_id)
-        
+
         # Serialize to JSON-friendly format
         return JSONResponse({
             "current_week": snapshot.current_week,
@@ -246,8 +246,20 @@ def analytics_league_health():
                 }
                 for t in snapshot.weakest_teams
             ],
+            "trade_opportunities": [
+                {
+                    "team_id": opp.team_id,
+                    "team_name": opp.team_name,
+                    "manager": opp.manager,
+                    "record": opp.record,
+                    "leverage_score": opp.leverage_score,
+                    "reason": opp.reason,
+                    "complementary_positions": opp.complementary_positions
+                }
+                for opp in (snapshot.trade_opportunities or [])
+            ],
         })
-        
+
     finally:
         conn.close()
 

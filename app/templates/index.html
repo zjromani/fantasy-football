@@ -253,11 +253,11 @@
   function toggleLeagueSnapshot() {
     const content = document.getElementById('league-snapshot-content');
     const chevron = document.getElementById('league-snapshot-chevron');
-    
+
     // Toggle visibility
     content.classList.toggle('hidden');
     chevron.classList.toggle('rotate-180');
-    
+
     // Load data on first open
     if (!leagueSnapshotLoaded && !content.classList.contains('hidden')) {
       loadLeagueSnapshot();
@@ -268,15 +268,15 @@
   async function loadLeagueSnapshot() {
     const loading = document.getElementById('league-snapshot-loading');
     const dataContainer = document.getElementById('league-snapshot-data');
-    
+
     try {
       const response = await fetch('/analytics/league_health');
       if (!response.ok) {
         throw new Error('Failed to load league health data');
       }
-      
+
       const data = await response.json();
-      
+
       // Populate "Your Team" card
       if (data.my_team) {
         const myTeam = data.my_team;
@@ -284,11 +284,11 @@
         document.getElementById('my-rank').textContent = `#${myTeam.rank}`;
         document.getElementById('my-power-index').textContent = myTeam.power_index.toFixed(1);
         document.getElementById('my-projected-points').textContent = myTeam.projected_points.toFixed(1);
-        
+
         // Positional grades
         const gradesContainer = document.getElementById('my-positional-grades');
         gradesContainer.innerHTML = '';
-        
+
         for (const [pos, grade] of Object.entries(myTeam.positional_grades)) {
           const gradeColor = {
             'A': 'bg-green-100 text-green-800 border-green-300',
@@ -297,29 +297,29 @@
             'D': 'bg-orange-100 text-orange-800 border-orange-300',
             'F': 'bg-red-100 text-red-800 border-red-300'
           }[grade.grade] || 'bg-slate-100 text-slate-800 border-slate-300';
-          
+
           const gradeEl = document.createElement('div');
           gradeEl.className = `px-2 py-1 rounded border ${gradeColor} text-xs font-bold`;
           gradeEl.innerHTML = `${pos}: ${grade.grade}`;
           gradeEl.title = `Starter Avg: ${grade.starter_avg.toFixed(1)} | Depth: ${grade.depth_count} | Injuries: ${grade.injury_risk}`;
           gradesContainer.appendChild(gradeEl);
         }
-        
+
         // Generate AI insight
         const weakestPos = Object.entries(myTeam.positional_grades)
           .sort((a, b) => {
             const gradeOrder = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'F': 1 };
             return (gradeOrder[a[1].grade] || 0) - (gradeOrder[b[1].grade] || 0);
           })[0];
-        
+
         const strongestPos = Object.entries(myTeam.positional_grades)
           .sort((a, b) => {
             const gradeOrder = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'F': 1 };
             return (gradeOrder[b[1].grade] || 0) - (gradeOrder[a[1].grade] || 0);
           })[0];
-        
+
         let insight = `You're ranked #${myTeam.rank} of ${data.total_teams} teams. `;
-        
+
         if (myTeam.rank <= 3) {
           insight += `Strong position as a contender. `;
         } else if (myTeam.rank <= Math.ceil(data.total_teams / 2)) {
@@ -327,18 +327,18 @@
         } else {
           insight += `Rebuilding opportunity — focus on strategic upgrades. `;
         }
-        
+
         if (weakestPos) {
           insight += `Weakest at ${weakestPos[0]} (${weakestPos[1].grade} grade) — consider targeting upgrades. `;
         }
-        
+
         if (strongestPos && strongestPos[1].grade === 'A') {
           insight += `Your ${strongestPos[0]} corps is elite — leverage in trades for depth elsewhere.`;
         }
-        
+
         document.getElementById('ai-insight').textContent = insight;
       }
-      
+
       // Populate strongest teams
       const strongestContainer = document.getElementById('strongest-teams');
       strongestContainer.innerHTML = '';
@@ -357,7 +357,7 @@
         `;
         strongestContainer.appendChild(teamEl);
       });
-      
+
       // Populate weakest teams
       const weakestContainer = document.getElementById('weakest-teams');
       weakestContainer.innerHTML = '';
@@ -376,11 +376,63 @@
         `;
         weakestContainer.appendChild(teamEl);
       });
+
+      // Populate trade opportunities
+      if (data.trade_opportunities && data.trade_opportunities.length > 0) {
+        const tradeSection = document.getElementById('trade-leverage-section');
+        const tradeList = document.getElementById('trade-opportunities-list');
+        const tradeCount = document.getElementById('trade-leverage-count');
+        
+        tradeCount.textContent = data.trade_opportunities.length;
+        tradeList.innerHTML = '';
+        
+        data.trade_opportunities.forEach((opp, idx) => {
+          const oppEl = document.createElement('div');
+          oppEl.className = 'bg-white rounded-lg p-3 border-2 border-purple-200 hover:border-purple-400 transition';
+          
+          // Leverage score color
+          let scoreColor = 'text-purple-700';
+          if (opp.leverage_score >= 8) {
+            scoreColor = 'text-red-600 font-bold';
+          } else if (opp.leverage_score >= 6) {
+            scoreColor = 'text-orange-600 font-bold';
+          }
+          
+          oppEl.innerHTML = `
+            <div class="flex items-start justify-between mb-2">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-base font-bold text-slate-900">${opp.team_name}</span>
+                  <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">${opp.record}</span>
+                </div>
+                <div class="text-xs text-slate-600 mb-1">${opp.manager}</div>
+              </div>
+              <div class="text-right flex-shrink-0 ml-2">
+                <div class="${scoreColor} text-lg font-bold">${opp.leverage_score.toFixed(1)}</div>
+                <div class="text-xs text-slate-500">Leverage</div>
+              </div>
+            </div>
+            <div class="text-xs text-slate-700 leading-relaxed mb-2">
+              ${opp.reason}
+            </div>
+            ${opp.complementary_positions && opp.complementary_positions.length > 0 ? `
+              <div class="flex flex-wrap gap-1 mt-2">
+                ${opp.complementary_positions.map(pos => 
+                  `<span class="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold">${pos}</span>`
+                ).join('')}
+              </div>
+            ` : ''}
+          `;
+          tradeList.appendChild(oppEl);
+        });
+        
+        tradeSection.classList.remove('hidden');
+      }
       
       // Show data, hide loading
       loading.classList.add('hidden');
       dataContainer.classList.remove('hidden');
-      
+
     } catch (error) {
       console.error('Failed to load league snapshot:', error);
       loading.innerHTML = `
@@ -718,6 +770,25 @@
             <p class="text-sm text-slate-700" id="ai-insight">
               Loading strategic recommendations...
             </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade Leverage Matrix -->
+      <div id="trade-leverage-section" class="hidden">
+        <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4 border-2 border-purple-300">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-sm font-bold text-purple-900 uppercase tracking-wide flex items-center">
+              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+              </svg>
+              🎯 High-Leverage Trade Targets
+            </h4>
+            <span class="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded-full font-semibold" id="trade-leverage-count">0</span>
+          </div>
+          <p class="text-xs text-purple-700 mb-3">Teams most likely to accept trades based on record, injuries, and complementary needs.</p>
+          <div class="space-y-2" id="trade-opportunities-list">
+            <!-- Populated via JS -->
           </div>
         </div>
       </div>
