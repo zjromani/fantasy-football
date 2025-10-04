@@ -9,7 +9,7 @@ Fetches real-time fantasy football news from multiple sources:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 import xml.etree.ElementTree as ET
 import json
@@ -61,7 +61,7 @@ class NewsCache:
         try:
             data = json.loads(cache_file.read_text())
             cached_at = datetime.fromisoformat(data["cached_at"])
-            if datetime.utcnow() - cached_at > timedelta(minutes=max_age_minutes):
+            if datetime.now(timezone.utc) - cached_at > timedelta(minutes=max_age_minutes):
                 return None
             return data["items"]
         except Exception:
@@ -71,7 +71,7 @@ class NewsCache:
         """Cache news items."""
         cache_file = self.cache_dir / f"{self._cache_key(source)}.json"
         data = {
-            "cached_at": datetime.utcnow().isoformat(),
+            "cached_at": datetime.now(timezone.utc).isoformat(),
             "items": items,
         }
         cache_file.write_text(json.dumps(data, indent=2))
@@ -106,7 +106,7 @@ class ESPNNewsFetcher:
                 try:
                     published = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %Z")
                 except Exception:
-                    published = datetime.utcnow()
+                    published = datetime.now(timezone.utc)
 
                 # Categorize based on title keywords
                 category = self._categorize(title + " " + description)
