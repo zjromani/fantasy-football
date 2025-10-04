@@ -248,7 +248,24 @@ def action_optimize_lineup():
 
 @app.get("/approvals")
 def approvals(request: Request):
+    """List pending recommendations with parsed payloads."""
     recs = list_recommendations(status="pending")
+    
+    # Parse payload JSON for each recommendation
+    for rec in recs:
+        if rec.get("payload"):
+            try:
+                payload = rec["payload"]
+                if isinstance(payload, str):
+                    rec["payload_obj"] = json.loads(payload)
+                else:
+                    rec["payload_obj"] = payload
+            except Exception as e:
+                print(f"[APPROVALS] Failed to parse payload for rec#{rec['id']}: {e}")
+                rec["payload_obj"] = {}
+        else:
+            rec["payload_obj"] = {}
+    
     return templates.TemplateResponse(request, "approvals.html", {"recs": recs})
 
 
@@ -268,39 +285,84 @@ def approve(rec_id: int):
             import json as _json
             payload = {}
             try:
-                payload = _json.loads(rec.get("payload") or "{}")
-            except Exception:
+                payload_str = rec.get("payload") or "{}"
+                payload = _json.loads(payload_str) if isinstance(payload_str, str) else payload_str
+            except Exception as e:
+                print(f"[APPROVE] Failed to parse payload: {e}")
                 payload = {}
-            items = payload.get("items") or [payload]
-            if not isinstance(items, list):
-                items = [payload]
+            
             settings = get_settings()
             league_key = normalize_league_key(settings.league_key)
             team_key = settings.team_key
             if not league_key or not team_key:
                 raise RuntimeError("LEAGUE_KEY and TEAM_KEY must be set in env for Yahoo writes")
-            # Build a minimal transaction XML: add with FAAB bid for first item
-            item0 = items[0] if items else {}
-            player_key = item0.get("player_id") or item0.get("player_key")
-            faab = item0.get("faab_min") or item0.get("faab") or 0
-            if not player_key:
-                raise RuntimeError("Missing player_id in recommendation payload")
-            xml = f"""
+            
+            # Enhanced format: add_player_id, drop_player_id, faab_min
+            add_player_id = payload.get("add_player_id")
+            drop_player_id = payload.get("drop_player_id")
+            faab = payload.get("faab_min", 0)
+            add_player_name = payload.get("add_player_name", "Unknown")
+            drop_player_name = payload.get("drop_player_name")
+            
+            if not add_player_id:
+                raise RuntimeError("Missing add_player_id in recommendation payload")
+            
+            # Build Yahoo transaction XML
+            # If drop_player_id exists, it's an add/drop. Otherwise, just add.
+            if drop_player_id:
+                xml = f"""
+<fantasy_content>
+  <transaction>
+    <type>add/drop</type>
+    <faab_bid>{int(faab)}</faab_bid>
+    <players>
+      <player>
+        <player_key>{add_player_id}</player_key>
+        <transaction_data>
+          <type>add</type>
+        </transaction_data>
+      </player>
+      <player>
+        <player_key>{drop_player_id}</player_key>
+        <transaction_data>
+          <type>drop</type>
+        </transaction_data>
+      </player>
+    </players>
+  </transaction>
+</fantasy_content>""".strip()
+                action_desc = f"Add {add_player_name}, Drop {drop_player_name}"
+            else:
+                xml = f"""
 <fantasy_content>
   <transaction>
     <type>add</type>
-    <faab_bid>{int(faab) if faab else 0}</faab_bid>
+    <faab_bid>{int(faab)}</faab_bid>
     <player>
-      <player_key>{player_key}</player_key>
+      <player_key>{add_player_id}</player_key>
     </player>
-    <team_key>{team_key}</team_key>
   </transaction>
 </fantasy_content>""".strip()
+                action_desc = f"Add {add_player_name}"
+            
+            # Submit to Yahoo
             client = YahooClient()
             resp = client.post_xml(f"league/{league_key}/transactions", xml)
-            insert_transaction_raw(kind="waiver_submit", team_id=None, raw=f"request={_json.dumps({'xml': xml})}; response={resp.text}")
-            notify("info", "Waiver submitted", f"Submitted add for {player_key}", {"rec_id": rec_id})
+            
+            # Log transaction
+            insert_transaction_raw(
+                kind="waiver_submit",
+                team_id=None,
+                raw=f"request={_json.dumps({'xml': xml})}; response={resp.text}"
+            )
+            
+            # Confirm to user
+            notify("info", "✅ Waiver Claim Submitted", 
+                  f"{action_desc} with ${int(faab)} FAAB bid. Check Yahoo for confirmation.",
+                  {"rec_id": rec_id, "yahoo_response": resp.text[:200]})
     except Exception as err:
+        import traceback
+        traceback.print_exc()
         notify("info", "Yahoo write error", f"{err}", {"rec_id": rec_id})
 
     notify("info", "Recommendation approved", f"Rec {rec_id} approved.", {"id": rec_id})
@@ -412,7 +474,7 @@ def action_waivers_live(league_key: str = Form(None)):
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     raw = {"settings": payload}
     settings = LeagueSettings.from_yahoo(raw)
-    
+
     try:
         # Get current week
         conn = get_connection()
@@ -423,19 +485,19 @@ def action_waivers_live(league_key: str = Form(None)):
             current_week = result[0] if result and result[0] else 1
         finally:
             conn.close()
-        
+
         # Use enhanced waiver analysis
         from .waivers_enhanced import analyze_waivers_enhanced, post_enhanced_waivers_to_inbox
-        
+
         recommendations = analyze_waivers_enhanced(
             settings=settings,
             week=current_week,
             max_players=75,
             top_n=5
         )
-        
+
         msg_id = post_enhanced_waivers_to_inbox(recommendations, current_week)
-        
+
         return RedirectResponse(url=f"/notifications/{msg_id}" if msg_id else "/", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as err:
         notify("info", "Waivers error", f"{err}", {"league_key": league_key})

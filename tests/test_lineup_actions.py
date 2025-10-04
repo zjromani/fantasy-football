@@ -123,7 +123,7 @@ def test_optimize_and_post_integration():
                     ("t1", "p2", 5, "BN", None))
 
         # Insert matchup to set current week
-        cur.execute("INSERT INTO matchups (week, team_id, opponent_id) VALUES (?, ?, ?)",
+        cur.execute("INSERT OR REPLACE INTO matchups (week, team_id, opponent_id) VALUES (?, ?, ?)",
                     (5, "t1", "t2"))
 
         conn.commit()

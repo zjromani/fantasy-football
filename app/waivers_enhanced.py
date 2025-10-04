@@ -31,21 +31,21 @@ class EnhancedWaiverRecommendation:
     add_player_position: str
     add_player_team: str
     add_projection: float
-    
+
     drop_player_id: Optional[str] = None
     drop_player_name: Optional[str] = None
     drop_projection: Optional[float] = None
-    
+
     score: float = 0.0
     faab_min: int = 0
     faab_max: int = 0
-    
+
     reasons: List[str] = None
-    
+
     def __post_init__(self):
         if self.reasons is None:
             self.reasons = []
-    
+
     def get_delta(self) -> float:
         """Point improvement if swap is made."""
         if self.drop_projection is not None:
@@ -57,10 +57,10 @@ def get_my_roster(week: int) -> List[Dict]:
     """Get user's current roster from database."""
     cfg = get_settings()
     my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
-    
+
     if not my_team_id:
         return []
-    
+
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -71,7 +71,7 @@ def get_my_roster(week: int) -> List[Dict]:
             WHERE r.team_id = ? AND r.week = ?
             ORDER BY p.position, p.name
         """, (my_team_id, week))
-        
+
         roster = []
         for row in cur.fetchall():
             roster.append({
@@ -101,10 +101,10 @@ def analyze_waivers_enhanced(
     client = YahooClient()
     cfg = get_settings()
     free_agents = free_agents_from_yahoo(client, cfg.league_key, max_players=max_players)
-    
+
     if not free_agents:
         return []
-    
+
     # Get real projections
     try:
         projections = get_projections(week)
@@ -112,7 +112,7 @@ def analyze_waivers_enhanced(
     except Exception as e:
         print(f"[WAIVERS] Could not load projections: {e}")
         proj_dict = {}
-    
+
     # Get news for context
     try:
         news = fetch_all_news(max_age_minutes=120, limit_per_source=20)
@@ -126,22 +126,22 @@ def analyze_waivers_enhanced(
     except Exception as e:
         print(f"[WAIVERS] Could not load news: {e}")
         news_by_player = {}
-    
+
     # Get my roster
     my_roster = get_my_roster(week)
     bench_players = [p for p in my_roster if p.get("is_bench")]
-    
+
     # Score each free agent
     recommendations = []
-    
+
     for fa in free_agents:
         name = fa["name"]
         position = fa["position"]
-        
+
         # Skip non-fantasy positions
         if position not in ["QB", "RB", "WR", "TE", "K", "DEF"]:
             continue
-        
+
         # Get projection
         proj_obj = proj_dict.get(name.lower())
         if proj_obj:
@@ -154,15 +154,15 @@ def analyze_waivers_enhanced(
         else:
             # Fallback to basic scoring
             projection = fa.get("proj_base", 0.0)
-        
+
         # Skip very low projections (not fantasy-relevant)
         if projection < 5.0:
             continue
-        
+
         # Find best drop candidate (lowest projected bench player at same position)
         drop_candidate = None
         drop_projection = None
-        
+
         bench_at_position = [p for p in bench_players if p["position"] == position]
         if bench_at_position:
             # Get projections for bench players
@@ -178,30 +178,30 @@ def analyze_waivers_enhanced(
                         bp = bench_proj_obj.fantasy_points_standard or 0
                 else:
                     bp = 5.0  # Default
-                
+
                 bench_with_proj.append((bench_p, bp))
-            
+
             # Sort by projection (lowest first)
             bench_with_proj.sort(key=lambda x: x[1])
-            
+
             if bench_with_proj:
                 drop_candidate, drop_projection = bench_with_proj[0]
-        
+
         # Calculate score (higher projection = better)
         score = projection
-        
+
         # Only recommend if better than drop candidate
         if drop_projection is not None and projection <= drop_projection:
             continue
-        
+
         # Build reasons
         reasons = []
         reasons.append(f"Projected {projection:.1f} pts this week")
-        
+
         if drop_candidate:
             delta = projection - drop_projection
             reasons.append(f"Upgrade over {drop_candidate['name']} (+{delta:.1f} pts)")
-        
+
         # Add news context
         player_news = news_by_player.get(name.lower(), [])
         if player_news:
@@ -210,14 +210,14 @@ def analyze_waivers_enhanced(
                     reasons.append(f"Injury update: {item.title[:60]}")
                 else:
                     reasons.append(f"News: {item.title[:60]}")
-        
+
         # FAAB calculation
         faab_remaining = settings.faab_budget or 100
         faab_min = max(1, int(score * 0.4))
         faab_max = max(faab_min + 2, int(score * 0.7))
         faab_min = min(faab_min, faab_remaining)
         faab_max = min(faab_max, faab_remaining)
-        
+
         rec = EnhancedWaiverRecommendation(
             add_player_id=fa["id"],
             add_player_name=name,
@@ -232,12 +232,12 @@ def analyze_waivers_enhanced(
             faab_max=faab_max,
             reasons=reasons
         )
-        
+
         recommendations.append(rec)
-    
+
     # Sort by delta (biggest improvement first)
     recommendations.sort(key=lambda r: r.get_delta(), reverse=True)
-    
+
     return recommendations[:top_n]
 
 
@@ -247,29 +247,29 @@ def post_enhanced_waivers_to_inbox(
 ) -> int:
     """Post enhanced waiver recommendations to Inbox."""
     if not recommendations:
-        return notify("waivers", "No waiver targets", 
+        return notify("waivers", "No waiver targets",
                      "No viable free agents with projections better than your bench.", {})
-    
+
     # Build detailed message
     lines = [f"🎯 Top {len(recommendations)} Waiver Targets for Week {week}\n"]
-    
+
     for i, rec in enumerate(recommendations, 1):
         lines.append(f"\n{i}. **Add {rec.add_player_name}** ({rec.add_player_position}, {rec.add_player_team})")
         lines.append(f"   Projected: {rec.add_projection:.1f} pts | FAAB: ${rec.faab_min}-${rec.faab_max}")
-        
+
         if rec.drop_player_name:
             lines.append(f"   Drop: {rec.drop_player_name} ({rec.drop_projection:.1f} pts)")
             lines.append(f"   Improvement: +{rec.get_delta():.1f} pts")
-        
+
         lines.append("   Reasons:")
         for reason in rec.reasons:
             lines.append(f"   • {reason}")
-    
+
     lines.append("\n" + "─" * 50)
     lines.append("\n💡 Review each recommendation and approve to add to pending waiver claims.")
-    
+
     body = "\n".join(lines)
-    
+
     # Save to recommendations table for approval flow
     conn = get_connection()
     try:
@@ -300,7 +300,7 @@ def post_enhanced_waivers_to_inbox(
         conn.commit()
     finally:
         conn.close()
-    
+
     # Post to Inbox
     payload = {
         "week": week,
@@ -314,7 +314,7 @@ def post_enhanced_waivers_to_inbox(
             for rec in recommendations
         ]
     }
-    
+
     msg_id = notify("waivers", f"⚡ {len(recommendations)} Waiver Targets", body, payload)
     return msg_id
 
