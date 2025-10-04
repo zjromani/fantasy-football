@@ -100,7 +100,7 @@ def analyze_waivers_enhanced(
     # Fetch free agents from Yahoo using improved pagination
     client = YahooClient()
     cfg = get_settings()
-    
+
     # Use position-specific queries with Yahoo's Add/Drop rank sort
     from .waivers_yahoo_improved import fetch_free_agents_by_position
     free_agents = fetch_free_agents_by_position(
@@ -165,7 +165,7 @@ def analyze_waivers_enhanced(
             # Since we're fetching position-by-position with AR sort, earlier = better
             position_baseline = {"QB": 18, "RB": 12, "WR": 10, "TE": 8, "K": 8, "DEF": 8}
             base_projection = position_baseline.get(position, 10.0)
-            
+
             # Scale down based on status
             status = fa.get("status", "")
             if status in ["O", "IR", "SUSP"]:
@@ -177,7 +177,7 @@ def analyze_waivers_enhanced(
             else:
                 # Healthy player from Yahoo's ranked list
                 projection = base_projection
-        
+
         # Skip injured/out players and very low projections
         if projection < 5.0:
             continue
