@@ -73,24 +73,24 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
 def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
     """Generate AI-powered GM brief using OpenAI."""
     context = _get_league_context(settings)
-    
+
     try:
         # Check if OpenAI is configured
         ai_settings = get_ai_settings()
-        
+
         # Get latest news for context
         all_news = fetch_all_news(max_age_minutes=60, limit_per_source=15)
         injury_news = get_injury_news(limit=10)
-        
+
         # Format news for AI
         news_summary = []
         for item in injury_news[:5]:
             news_summary.append(f"- [{item.source}] {item.title}")
-        
+
         for item in all_news[:10]:
             if item.category != "injury":  # Already got injuries above
                 news_summary.append(f"- [{item.source}] {item.title}")
-        
+
         # Build enhanced context with player details
         roster_detail = []
         for p in context['my_roster']:
@@ -100,9 +100,9 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
                 "slot": p.get('slot'),
                 "status": p.get('status') or "Active"
             })
-        
+
         # Build prompt for OpenAI
-        prompt = f"""You are an expert fantasy football advisor for NFL Week {context.get('current_week', '?')}. 
+        prompt = f"""You are an expert fantasy football advisor for NFL Week {context.get('current_week', '?')}.
 Generate a concise, actionable GM brief for the user's fantasy team.
 
 LEAGUE SETTINGS:
@@ -200,12 +200,12 @@ def _build_data_brief(settings: LeagueSettings, context: Dict, error: str) -> Tu
         "",
         "### Actions",
         "- Review your roster for injury updates",
-        "- Check waiver wire for breakout candidates",  
+        "- Check waiver wire for breakout candidates",
         "- Scout trade opportunities with league managers",
         "",
         "---",
     ])
-    
+
     # Add helpful message based on error type
     if "insufficient_quota" in error or "RateLimitError" in error:
         body_lines.append("_💡 OpenAI API quota exceeded. Add credits at https://platform.openai.com/account/billing_")
