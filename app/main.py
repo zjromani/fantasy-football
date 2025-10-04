@@ -525,7 +525,62 @@ def action_find_trades():
     GM scans all teams and finds best trade opportunities.
     Owner just clicks one button - GM does all the analysis.
     """
-    notify("info", "Trade Finder Coming Soon", "GM will scan all teams, analyze manager tendencies from past transactions, and present the best trade opportunities. Backend implementation in progress.", {})
+    try:
+        from .trades import propose_trades, TradeProposal, Player, TeamState
+        
+        payload = latest_settings_payload()
+        if not payload:
+            notify("info", "No settings", "Run 'Sync Yahoo Data' first to load league data.", {})
+            return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+        
+        settings = LeagueSettings(**payload)
+        cfg = get_settings()
+        my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
+        
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            
+            # Get current week
+            cur.execute("SELECT MAX(week) FROM matchups")
+            result = cur.fetchone()
+            current_week = result[0] if result and result[0] else 1
+            
+            # Get all teams except mine
+            cur.execute("SELECT id, name, manager FROM teams WHERE id != ? ORDER BY name", (my_team_id,))
+            opponent_teams = [{"id": row[0], "name": row[1], "manager": row[2]} for row in cur.fetchall()]
+            
+            if not opponent_teams:
+                notify("info", "No teams found", "No opponent teams available for trade analysis.", {})
+                return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+            
+            # Build my team state (simplified - using placeholder data)
+            # TODO: Build proper TeamState from roster/matchups/transactions data
+            my_roster_players = []
+            
+            all_proposals = []
+            
+            # For now, just notify that we're scanning
+            # Full implementation requires building TeamState from DB data
+            team_names = ", ".join([t["name"] for t in opponent_teams[:3]])
+            if len(opponent_teams) > 3:
+                team_names += f" and {len(opponent_teams) - 3} others"
+            
+            notify(
+                "info",
+                "Trade Analysis Complete",
+                f"GM scanned {len(opponent_teams)} teams: {team_names}. "
+                "Full trade proposal generation with manager tendencies analysis coming soon. "
+                "Backend needs roster/transaction data integration.",
+                {}
+            )
+            
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        notify("info", "Trade finder error", f"Failed to scan for trades: {e}", {})
+    
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
