@@ -41,7 +41,7 @@ All tests are verified safe:
 1. **Use mocks/fixtures:**
    ```python
    from unittest.mock import patch
-   
+
    @patch('app.module.external_api_call')
    def test_something(mock_api):
        mock_api.return_value = {"data": "fake"}
@@ -53,7 +53,7 @@ All tests are verified safe:
    class MockTransport(httpx.BaseTransport):
        def handle_request(self, request):
            return httpx.Response(200, json={"mock": "data"})
-   
+
    client = SomeClient(transport=MockTransport())
    ```
 

@@ -35,7 +35,7 @@ POLICY = (
 # ==============================================================================
 
 WAIVER_SYSTEM = """
-You are a fantasy football analytics engine. You interpret data exactly, do not hallucinate. 
+You are a fantasy football analytics engine. You interpret data exactly, do not hallucinate.
 Always cite reasoning steps. Only recommend players from the provided free agents list.
 """
 
@@ -49,7 +49,7 @@ def build_waiver_prompt(
 ) -> str:
     """
     Build a structured waiver recommendation prompt.
-    
+
     Args:
         league_settings: Scoring rules, roster slots, etc.
         my_roster: Current roster with positions, projections, status
@@ -57,7 +57,7 @@ def build_waiver_prompt(
         current_week: Current NFL week
         faab_remaining: Remaining FAAB budget
         recent_transactions: Optional recent add/drop activity
-    
+
     Returns:
         Formatted prompt string
     """
@@ -68,7 +68,7 @@ def build_waiver_prompt(
         f"Status: {p.get('status', 'Healthy')}"
         for p in my_roster
     ])
-    
+
     # Format free agents for prompt
     fa_text = "\n".join([
         f"  {i+1}. {fa['name']} ({fa['position']}, {fa.get('team', '??')}) - "
@@ -77,11 +77,11 @@ def build_waiver_prompt(
         f"Bye: Week {fa.get('bye_week', 'N/A')}"
         for i, fa in enumerate(free_agents[:50])  # Limit to top 50
     ])
-    
+
     # Format league settings
     scoring = league_settings.get('scoring', {})
     scoring_text = f"PPR: {scoring.get('ppr', 0)}, Pass TD: {scoring.get('pass_td', 4)}, Rush/Rec TD: {scoring.get('rush_td', 6)}"
-    
+
     return f"""
 I give you:
 
@@ -148,7 +148,7 @@ def build_trade_prompt(
 ) -> str:
     """
     Build a structured trade proposal prompt.
-    
+
     Args:
         league_settings: Scoring rules, roster slots
         my_roster: My team with projections
@@ -156,7 +156,7 @@ def build_trade_prompt(
         opponent_name: Opponent manager name
         current_week: Current NFL week
         manager_tendencies: Optional tendencies (trade acceptance history, etc.)
-    
+
     Returns:
         Formatted prompt string
     """
@@ -166,13 +166,13 @@ def build_trade_prompt(
         f"Proj: {p.get('projection', 'N/A')} pts, Slot: {p.get('slot', 'BN')}"
         for p in my_roster
     ])
-    
+
     opponent_roster_text = "\n".join([
         f"  - {p['name']} ({p['position']}, {p.get('team', '??')}) - "
         f"Proj: {p.get('projection', 'N/A')} pts"
         for p in opponent_roster
     ])
-    
+
     tendencies_text = ""
     if manager_tendencies:
         tendencies_text = f"""
@@ -181,7 +181,7 @@ def build_trade_prompt(
 - Position preference: {manager_tendencies.get('position_bias', 'Unknown')}
 - Typical action: {manager_tendencies.get('action_time', 'Unknown')}
 """
-    
+
     return f"""
 I give you:
 
@@ -243,14 +243,14 @@ def build_lineup_prompt(
 ) -> str:
     """
     Build a structured lineup optimization prompt.
-    
+
     Args:
         league_settings: Scoring rules, roster slots
         my_roster: Available players with projections, status, matchups
         current_week: Current NFL week
         opponent_defenses: Optional defensive rankings by position
         weather: Optional weather data for games
-    
+
     Returns:
         Formatted prompt string
     """
@@ -264,22 +264,22 @@ def build_lineup_prompt(
         f"News: {p.get('news_summary', 'None')[:60]}"
         for i, p in enumerate(my_roster)
     ])
-    
+
     # Format roster requirements
     slots = league_settings.get('roster_slots', {})
     slots_text = ", ".join([f"{pos}: {count}" for pos, count in slots.items() if count > 0 and pos != 'BENCH'])
-    
+
     context_text = ""
     if opponent_defenses:
         context_text += "\n**DEFENSIVE MATCHUPS:**\n"
         for pos, rankings in opponent_defenses.items():
             context_text += f"  {pos}: {rankings}\n"
-    
+
     if weather:
         context_text += "\n**WEATHER ALERTS:**\n"
         for game, conditions in weather.items():
             context_text += f"  {game}: {conditions}\n"
-    
+
     return f"""
 I give you:
 

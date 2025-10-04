@@ -138,9 +138,21 @@ def analyze_waivers_enhanced(
     # Get my roster
     my_roster = get_my_roster(week)
     bench_players = [p for p in my_roster if p.get("is_bench")]
+    starters = [p for p in my_roster if not p.get("is_bench")]
+    
+    # Identify positions where we have healthy starters
+    healthy_starter_positions = {}
+    for starter in starters:
+        pos = starter["position"]
+        status = starter.get("status", "")
+        if status not in ["O", "IR", "D"]:  # Healthy or questionable
+            healthy_starter_positions[pos] = healthy_starter_positions.get(pos, 0) + 1
+    
+    print(f"[WAIVERS] Healthy starters: {healthy_starter_positions}")
 
     # Score each free agent
     recommendations = []
+    position_counts = {"QB": 0, "RB": 0, "WR": 0, "TE": 0}  # Track recommendations per position
 
     for fa in free_agents:
         name = fa["name"]
@@ -149,6 +161,17 @@ def analyze_waivers_enhanced(
         # Skip non-fantasy positions
         if position not in ["QB", "RB", "WR", "TE", "K", "DEF"]:
             continue
+        
+        # Skip QB if we already have multiple healthy starters (QB is low-value position)
+        # Most leagues only need 1-2 QBs
+        if position == "QB":
+            healthy_qbs = healthy_starter_positions.get("QB", 0)
+            if healthy_qbs >= 1:
+                # Already have a healthy starting QB, skip more QBs
+                continue
+            # Limit QB recommendations to 1
+            if position_counts["QB"] >= 1:
+                continue
 
         # Get projection
         proj_obj = proj_dict.get(name.lower())
@@ -265,11 +288,35 @@ def analyze_waivers_enhanced(
         )
 
         recommendations.append(rec)
+        
+        # Track position counts
+        if position in position_counts:
+            position_counts[position] += 1
 
-    # Sort by delta (biggest improvement first)
-    recommendations.sort(key=lambda r: r.get_delta(), reverse=True)
-
-    return recommendations[:top_n]
+    # Sort by delta (biggest improvement first), but prioritize RB/WR over QB/TE
+    def sort_key(r: EnhancedWaiverRecommendation):
+        # Position priority: RB/WR > TE > QB
+        position_priority = {"RB": 100, "WR": 100, "TE": 50, "QB": 10, "K": 1, "DEF": 1}
+        priority = position_priority.get(r.add_player_position, 0)
+        # Combine position priority with delta (improvement)
+        return (priority, r.get_delta())
+    
+    recommendations.sort(key=sort_key, reverse=True)
+    
+    # Diversify: limit to max 2 per position in final recommendations
+    final_recs = []
+    position_in_final = {"QB": 0, "RB": 0, "WR": 0, "TE": 0}
+    
+    for rec in recommendations:
+        pos = rec.add_player_position
+        if position_in_final.get(pos, 0) < 2:  # Max 2 per position
+            final_recs.append(rec)
+            position_in_final[pos] = position_in_final.get(pos, 0) + 1
+        
+        if len(final_recs) >= top_n:
+            break
+    
+    return final_recs
 
 
 def post_enhanced_waivers_to_inbox(
