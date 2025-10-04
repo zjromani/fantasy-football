@@ -40,18 +40,25 @@ def _get_opponent_context(my_team_id: str, opponent_team_id: str, current_week: 
         my_team_name = my_team[0] if my_team else "Your Team"
         
         # Get opponent's roster with player details
+        # Note: Yahoo roster data may not have slot assignments if we fetched general roster
+        # Group by player to avoid duplicates
         cur.execute("""
             SELECT p.name, p.position, p.team, p.bye_week, r.slot, r.status
             FROM rosters r
             JOIN players p ON r.player_id = p.id
             WHERE r.team_id = ? AND r.week = ?
+            GROUP BY p.name, p.position, p.team
             ORDER BY 
-                CASE 
-                    WHEN r.slot = 'BN' THEN 2
-                    WHEN r.slot = 'IR' THEN 3
-                    ELSE 1
+                CASE p.position
+                    WHEN 'QB' THEN 1
+                    WHEN 'RB' THEN 2
+                    WHEN 'WR' THEN 3
+                    WHEN 'TE' THEN 4
+                    WHEN 'K' THEN 5
+                    WHEN 'DEF' THEN 6
+                    ELSE 7
                 END,
-                p.position
+                p.name
         """, (opponent_team_id, current_week))
         
         opponent_roster = []
@@ -65,12 +72,24 @@ def _get_opponent_context(my_team_id: str, opponent_team_id: str, current_week: 
                 "status": row[5] or "Active"
             })
         
-        # Get my roster for comparison
+        # Get my roster for comparison (deduplicated)
         cur.execute("""
             SELECT p.name, p.position, p.team, p.bye_week, r.slot, r.status
             FROM rosters r
             JOIN players p ON r.player_id = p.id
             WHERE r.team_id = ? AND r.week = ?
+            GROUP BY p.name, p.position, p.team
+            ORDER BY 
+                CASE p.position
+                    WHEN 'QB' THEN 1
+                    WHEN 'RB' THEN 2
+                    WHEN 'WR' THEN 3
+                    WHEN 'TE' THEN 4
+                    WHEN 'K' THEN 5
+                    WHEN 'DEF' THEN 6
+                    ELSE 7
+                END,
+                p.name
         """, (my_team_id, current_week))
         
         my_roster = []
@@ -122,8 +141,27 @@ def _get_opponent_context(my_team_id: str, opponent_team_id: str, current_week: 
         # Analyze roster composition
         def analyze_roster(roster: List[Dict]) -> Dict:
             """Count positions and identify starters vs bench."""
-            starters = [p for p in roster if p.get('slot') not in ['BN', 'IR', None]]
-            bench = [p for p in roster if p.get('slot') == 'BN']
+            # If slot data is missing, estimate starters based on typical roster (top players by position)
+            has_slot_data = any(p.get('slot') for p in roster)
+            
+            if has_slot_data:
+                starters = [p for p in roster if p.get('slot') not in ['BN', 'IR', None]]
+                bench = [p for p in roster if p.get('slot') == 'BN']
+            else:
+                # Estimate starters: typically first 1-2 per key position
+                starters = []
+                bench = []
+                pos_count = {}
+                for p in roster:
+                    pos = p.get('position', 'UNKNOWN')
+                    count = pos_count.get(pos, 0)
+                    # Typical starter slots: 1-2 QB, 2-3 RB, 2-3 WR, 1 TE, 1 K, 1 DEF
+                    max_starters = {'QB': 2, 'RB': 3, 'WR': 3, 'TE': 1, 'K': 1, 'DEF': 1}.get(pos, 0)
+                    if count < max_starters:
+                        starters.append(p)
+                    else:
+                        bench.append(p)
+                    pos_count[pos] = count + 1
             
             position_counts = {}
             for p in roster:
@@ -136,7 +174,8 @@ def _get_opponent_context(my_team_id: str, opponent_team_id: str, current_week: 
                 "bench": len(bench),
                 "position_breakdown": position_counts,
                 "injured": len([p for p in roster if p.get('status') and p['status'] != 'Active']),
-                "on_bye": len([p for p in roster if p.get('bye_week') == current_week])
+                "on_bye": len([p for p in roster if p.get('bye_week') == current_week]),
+                "estimated": not has_slot_data
             }
         
         opponent_analysis = analyze_roster(opponent_roster)
@@ -208,19 +247,40 @@ def build_scouting_report(
         ai_settings = get_ai_settings()
         
         # Build AI prompt for scouting
+        # Extract top players by position for better analysis
+        def get_top_by_position(roster: List[Dict], position: str, limit: int = 3) -> List[str]:
+            players = [p for p in roster if p.get('position') == position]
+            return [f"{p['name']} ({p['nfl_team']})" for p in players[:limit]]
+        
+        my_top_qb = get_top_by_position(context['my_roster'], 'QB', 2)
+        my_top_rb = get_top_by_position(context['my_roster'], 'RB', 3)
+        my_top_wr = get_top_by_position(context['my_roster'], 'WR', 3)
+        my_top_te = get_top_by_position(context['my_roster'], 'TE', 2)
+        
+        opp_top_qb = get_top_by_position(context['opponent_roster'], 'QB', 2)
+        opp_top_rb = get_top_by_position(context['opponent_roster'], 'RB', 3)
+        opp_top_wr = get_top_by_position(context['opponent_roster'], 'WR', 3)
+        opp_top_te = get_top_by_position(context['opponent_roster'], 'TE', 2)
+        
         prompt = f"""You are an expert fantasy football analyst generating a scouting report for Week {current_week}.
 
 MATCHUP: {context['my_team_name']} vs. {context['opponent_name']} (Manager: {context['opponent_manager']})
 
-YOUR TEAM ANALYSIS:
-- Total roster: {context['my_analysis']['total']} players
-- Starters: {context['my_analysis']['starters']}
+YOUR TEAM KEY PLAYERS:
+- QB: {', '.join(my_top_qb) if my_top_qb else 'None listed'}
+- RB: {', '.join(my_top_rb) if my_top_rb else 'None listed'}
+- WR: {', '.join(my_top_wr) if my_top_wr else 'None listed'}
+- TE: {', '.join(my_top_te) if my_top_te else 'None listed'}
+- Total roster size: {context['my_analysis']['total']} players
 - Position breakdown: {_json.dumps(context['my_analysis']['position_breakdown'])}
-- Injured/Out: {context['my_analysis']['injured']}
-- On bye this week: {context['my_analysis']['on_bye']}
 
-OPPONENT'S ROSTER ({context['opponent_analysis']['total']} players):
-{_json.dumps(context['opponent_roster'], indent=2)}
+OPPONENT'S KEY PLAYERS:
+- QB: {', '.join(opp_top_qb) if opp_top_qb else 'None listed'}
+- RB: {', '.join(opp_top_rb) if opp_top_rb else 'None listed'}
+- WR: {', '.join(opp_top_wr) if opp_top_wr else 'None listed'}
+- TE: {', '.join(opp_top_te) if opp_top_te else 'None listed'}
+- Total roster size: {context['opponent_analysis']['total']} players
+- Position breakdown: {_json.dumps(context['opponent_analysis']['position_breakdown'])}
 
 OPPONENT'S TEAM STATS:
 - Starters: {context['opponent_analysis']['starters']}

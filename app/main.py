@@ -70,7 +70,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
     rows = inbox_list(kind)
     settings_payload = latest_settings_payload() or {}
     pending_count = count_pending_recommendations()
-    
+
     # Get league teams for scouting report dropdown
     teams_list = []
     if settings_payload:
@@ -78,7 +78,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
         try:
             cfg = get_settings()
             my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
-            
+
             cur = conn.cursor()
             cur.execute("SELECT id, name, manager FROM teams WHERE id != ? ORDER BY name", (my_team_id,))
             for row in cur.fetchall():
@@ -87,7 +87,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
             pass
         finally:
             conn.close()
-    
+
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -107,10 +107,10 @@ def notification_detail(request: Request, notification_id: int):
     row = inbox_get(notification_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Notification not found")
-    
+
     payload_obj = {}
     payload_raw = row.get("payload") or "{}"
-    
+
     # Ensure payload_obj is always a dict
     try:
         parsed = _json.loads(payload_raw)
@@ -124,7 +124,7 @@ def notification_detail(request: Request, notification_id: int):
     except Exception as e:
         # If parsing fails, payload_obj stays as empty dict
         payload_obj = {"_parse_error": str(e), "_raw": payload_raw[:100]}
-    
+
     return templates.TemplateResponse(
         request, "detail.html", {"n": row, "payload_obj": payload_obj, "unread": inbox_unread()}
     )
@@ -248,9 +248,9 @@ def action_scouting_report(opponent_team_id: str = Form(...)):
         if not payload:
             notify("info", "No settings", "Run 'Ingest Now' first to load league data.")
             return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-        
+
         settings = LeagueSettings(**payload)
-        
+
         # Get current week
         conn = get_connection()
         try:
@@ -260,10 +260,10 @@ def action_scouting_report(opponent_team_id: str = Form(...)):
             current_week = result[0] if result and result[0] else 1
         finally:
             conn.close()
-        
+
         # Generate and post report
         msg_id = post_scouting_report(settings, opponent_team_id, current_week)
-        
+
         return RedirectResponse(url=f"/notifications/{msg_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
         notify("info", "Scouting error", f"Failed to generate report: {e}", {})
