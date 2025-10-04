@@ -174,6 +174,21 @@ def list_notifications(request: Request, kind: Optional[str] = None):
     rows = inbox_list(kind)
     settings_payload = latest_settings_payload() or {}
     pending_count = count_pending_recommendations()
+    
+    # Fetch top pending recommendations for Action Cards
+    pending_recs = []
+    try:
+        from app.store import get_pending_recommendations
+        pending_recs_raw = get_pending_recommendations()
+        # Parse payload JSON for each recommendation
+        for rec in pending_recs_raw:
+            try:
+                rec["payload_obj"] = json.loads(rec.get("payload") or "{}")
+            except:
+                rec["payload_obj"] = {}
+            pending_recs.append(rec)
+    except Exception as e:
+        print(f"Error fetching pending recommendations: {e}")
 
     # Get league teams for scouting report dropdown and my starting lineup
     teams_list = []
@@ -242,7 +257,8 @@ def list_notifications(request: Request, kind: Optional[str] = None):
             "unread": inbox_unread(),
             "filter_kind": kind or "",
             "league_settings": settings_payload,
-            "pending_recs": pending_count,
+            "pending_recs": pending_recs,  # Pass the full list, not just count
+            "pending_count": pending_count,  # Keep count for backwards compatibility
             "teams": teams_list,
             "my_lineup": my_lineup,
         },

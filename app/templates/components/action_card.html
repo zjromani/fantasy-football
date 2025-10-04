@@ -1,0 +1,231 @@
+<!-- Action Card: One-tap approval for AI recommendations -->
+<!-- Usage: Include this in index.html and pass recommendation data -->
+
+{% macro render_action_card(rec) %}
+<div class="action-card bg-white rounded-xl shadow-lg border-2 border-slate-200 hover:border-teal-400 transition-all duration-200 p-6 mb-4 slide-in">
+  <div class="flex items-start justify-between mb-4">
+    <!-- Left: Card Header -->
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-3 mb-2">
+        <!-- Type Badge -->
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide
+          {% if rec['kind'] == 'waivers' %}bg-green-100 text-green-800
+          {% elif rec['kind'] == 'lineup' %}bg-orange-100 text-orange-800
+          {% elif rec['kind'] == 'trades' %}bg-purple-100 text-purple-800
+          {% else %}bg-slate-100 text-slate-800{% endif %}">
+          {% if rec['kind'] == 'waivers' %}
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path>
+              <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"></path>
+            </svg>
+          {% elif rec['kind'] == 'lineup' %}
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+              <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path>
+            </svg>
+          {% elif rec['kind'] == 'trades' %}
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+            </svg>
+          {% endif %}
+          {{ rec['kind'] }}
+        </span>
+        
+        <!-- Timestamp -->
+        <span class="text-xs text-slate-500">{{ rec['created_at'][:16] }}</span>
+        
+        <!-- Priority/Confidence Badge -->
+        {% if rec.get('payload_obj', {}).get('confidence') %}
+        <span class="text-xs font-semibold px-2 py-1 rounded
+          {% if rec['payload_obj']['confidence'] >= 80 %}bg-green-50 text-green-700
+          {% elif rec['payload_obj']['confidence'] >= 60 %}bg-yellow-50 text-yellow-700
+          {% else %}bg-red-50 text-red-700{% endif %}">
+          {{ rec['payload_obj']['confidence']|int }}% confidence
+        </span>
+        {% endif %}
+      </div>
+      
+      <!-- Title -->
+      <h3 class="text-xl font-bold text-slate-900 mb-1">
+        {{ rec['title'] }}
+      </h3>
+      
+      <!-- Quick Stats -->
+      <div class="text-sm text-slate-600 font-medium">
+        {{ rec['body'] }}
+      </div>
+    </div>
+    
+    <!-- Right: Quick Action Icons -->
+    <div class="flex items-start space-x-2 ml-4">
+      <!-- Info/Explain button -->
+      <button 
+        onclick="toggleDetails('rec-{{ rec['id'] }}')"
+        class="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition"
+        title="Show details"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+  
+  <!-- Collapsible Details -->
+  <div id="rec-{{ rec['id'] }}-details" class="hidden mb-4">
+    {% if rec['kind'] == 'waivers' and rec.get('payload_obj') %}
+      <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div class="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span class="text-slate-500">Add:</span>
+            <span class="font-bold text-green-700 ml-2">{{ rec['payload_obj'].get('add_player_name', 'Unknown') }}</span>
+            <span class="text-slate-400 text-xs ml-1">({{ rec['payload_obj'].get('position', '') }})</span>
+          </div>
+          {% if rec['payload_obj'].get('drop_player_name') %}
+          <div>
+            <span class="text-slate-500">Drop:</span>
+            <span class="font-bold text-red-700 ml-2">{{ rec['payload_obj'].get('drop_player_name') }}</span>
+          </div>
+          {% endif %}
+          <div>
+            <span class="text-slate-500">Projected:</span>
+            <span class="font-semibold ml-2">{{ "%.1f"|format(rec['payload_obj'].get('projection', 0)) }} pts</span>
+          </div>
+          <div>
+            <span class="text-slate-500">Improvement:</span>
+            <span class="font-semibold text-green-600 ml-2">+{{ "%.1f"|format(rec['payload_obj'].get('delta', 0)) }} pts</span>
+          </div>
+          <div class="col-span-2">
+            <span class="text-slate-500">FAAB Bid:</span>
+            <span class="font-semibold ml-2">${{ rec['payload_obj'].get('faab_min', 0) }}-${{ rec['payload_obj'].get('faab_max', 0) }}</span>
+          </div>
+        </div>
+        
+        {% if rec['payload_obj'].get('reasons') %}
+        <div class="mt-3 pt-3 border-t border-slate-200">
+          <span class="text-slate-600 text-xs font-semibold uppercase">Why this move:</span>
+          <ul class="mt-2 space-y-1">
+            {% for reason in rec['payload_obj']['reasons'] %}
+            <li class="text-xs text-slate-700 flex items-start">
+              <svg class="w-3 h-3 mr-2 mt-0.5 text-teal-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+              </svg>
+              <span>{{ reason }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+    {% elif rec['kind'] == 'lineup' and rec.get('payload_obj') %}
+      <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <div class="space-y-2 text-sm">
+          {% if rec['payload_obj'].get('sit') and rec['payload_obj'].get('start') %}
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-slate-500">Sit:</span>
+              <span class="font-bold text-red-700 ml-2">{{ rec['payload_obj']['sit'] }}</span>
+            </div>
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+            </svg>
+            <div>
+              <span class="text-slate-500">Start:</span>
+              <span class="font-bold text-green-700 ml-2">{{ rec['payload_obj']['start'] }}</span>
+            </div>
+          </div>
+          {% endif %}
+          
+          {% if rec['payload_obj'].get('rationale') %}
+          <div class="mt-3 pt-3 border-t border-slate-200">
+            <span class="text-slate-600 text-xs font-semibold uppercase">Rationale:</span>
+            <p class="mt-1 text-xs text-slate-700">{{ rec['payload_obj']['rationale'] }}</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <!-- Generic details view -->
+      <div class="bg-slate-50 rounded-lg p-4 border border-slate-200">
+        <pre class="text-xs text-slate-600 overflow-auto">{{ rec.get('payload_obj', {}) }}</pre>
+      </div>
+    {% endif %}
+  </div>
+  
+  <!-- Action Buttons -->
+  <div class="flex items-center gap-3">
+    <!-- Primary: Approve -->
+    <form method="post" action="/approvals/{{ rec['id'] }}/approve" class="flex-1">
+      <button 
+        type="submit"
+        class="w-full inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-lg font-bold text-base transition shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+      >
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        Approve
+      </button>
+    </form>
+    
+    <!-- Secondary: Deny -->
+    <form method="post" action="/approvals/{{ rec['id'] }}/deny" class="flex-shrink-0">
+      <button 
+        type="submit"
+        class="px-4 py-3 bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 hover:border-red-400 rounded-lg font-semibold text-base transition"
+        onclick="return confirm('Deny this recommendation?')"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </form>
+    
+    <!-- Tertiary: More Options -->
+    <div class="relative flex-shrink-0">
+      <button 
+        onclick="toggleMenu('menu-{{ rec['id'] }}')"
+        class="px-4 py-3 bg-white hover:bg-slate-50 text-slate-600 border-2 border-slate-200 hover:border-slate-300 rounded-lg font-semibold transition"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+        </svg>
+      </button>
+      
+      <!-- Dropdown Menu -->
+      <div id="menu-{{ rec['id'] }}" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 z-10">
+        <a href="/notifications/{{ rec['id'] }}" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg">
+          View Full Details
+        </a>
+        <button onclick="alert('Snooze feature coming soon!')" class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+          Snooze for 1 day
+        </button>
+        <button onclick="alert('Edit feature coming soon!')" class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-b-lg">
+          Edit Recommendation
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleDetails(id) {
+    const details = document.getElementById(id + '-details');
+    details.classList.toggle('hidden');
+  }
+  
+  function toggleMenu(id) {
+    const menu = document.getElementById(id);
+    menu.classList.toggle('hidden');
+  }
+  
+  // Close menus when clicking outside
+  document.addEventListener('click', function(event) {
+    if (!event.target.closest('button')) {
+      document.querySelectorAll('[id^="menu-"]').forEach(menu => {
+        menu.classList.add('hidden');
+      });
+    }
+  });
+</script>
+{% endmacro %}
+

@@ -6,7 +6,7 @@
 <div id="coach-bar" class="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white shadow-lg sticky top-0 z-50 border-b border-slate-700 -mx-4 -mt-6 mb-6 sm:-mx-6 lg:-mx-8">
   <div class="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between flex-wrap gap-4">
-      
+
       <!-- Left: Week & Opponent -->
       <div class="flex items-center space-x-4 sm:space-x-6">
         <div class="flex items-center">
@@ -18,7 +18,7 @@
             <div id="coach-week" class="text-sm font-semibold">--</div>
           </div>
         </div>
-        
+
         <div id="coach-opponent" class="hidden sm:flex items-center">
           <div>
             <div class="text-xs text-slate-400">vs</div>
@@ -26,7 +26,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- Middle: Team Status -->
       <div class="flex items-center space-x-3 sm:space-x-4">
         <!-- Starters Ready -->
@@ -39,7 +39,7 @@
             <div id="coach-starters" class="text-sm font-semibold">-/-</div>
           </div>
         </div>
-        
+
         <!-- Injuries -->
         <div id="coach-injuries-wrapper" class="hidden">
           <div class="flex items-center">
@@ -52,7 +52,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- FAAB -->
         <div class="flex items-center">
           <svg class="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -64,7 +64,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- Right: Sync & Actions -->
       <div class="flex items-center space-x-3 sm:space-x-4">
         <!-- Last Sync -->
@@ -80,13 +80,13 @@
             <div id="coach-sync" class="text-xs font-medium">--</div>
           </div>
         </div>
-        
+
         <!-- Actions Button -->
         <a href="#actions" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center">
           <span id="coach-actions-text">All Set</span>
         </a>
       </div>
-      
+
     </div>
   </div>
 </div>
@@ -98,22 +98,22 @@
     try {
       const response = await fetch('/api/dashboard/summary');
       if (!response.ok) return;
-      
+
       const data = await response.json();
-      
+
       // Update week
       document.getElementById('coach-week').textContent = `Week ${data.current_week}`;
-      
+
       // Update opponent
       if (data.opponent) {
         const opponentEl = document.getElementById('coach-opponent');
         opponentEl.classList.remove('hidden');
         opponentEl.querySelector('.text-sm').textContent = data.opponent.name.substring(0, 20);
       }
-      
+
       // Update starters
       document.getElementById('coach-starters').textContent = `${data.starters_ready}/${data.total_starters}`;
-      
+
       // Update injuries
       if (data.injury_count > 0) {
         document.getElementById('coach-injuries-wrapper').classList.remove('hidden');
@@ -121,13 +121,13 @@
       } else {
         document.getElementById('coach-injuries-wrapper').classList.add('hidden');
       }
-      
+
       // Update FAAB
       document.getElementById('coach-faab').textContent = `$${data.faab_remaining}`;
-      
+
       // Update sync status
       document.getElementById('coach-sync').textContent = data.last_sync || 'Never';
-      
+
       // Update sync icon (add spin if syncing)
       const syncIcon = document.getElementById('coach-sync-icon');
       if (data.sync_status === 'syncing') {
@@ -135,12 +135,12 @@
       } else {
         syncIcon.classList.remove('animate-spin');
       }
-      
+
       // Update pending badge
       const badge = document.getElementById('coach-pending-badge');
       const actionsBtn = document.getElementById('coach-actions-btn');
       const actionsText = document.getElementById('coach-actions-text');
-      
+
       if (data.pending_count > 0) {
         badge.classList.remove('hidden');
         badge.textContent = data.pending_count;
@@ -153,18 +153,18 @@
         actionsBtn.classList.remove('bg-orange-600', 'hover:bg-orange-700');
         actionsBtn.classList.add('bg-teal-600', 'hover:bg-teal-700');
       }
-      
+
     } catch (error) {
       console.error('Failed to update Coach Bar:', error);
     }
   }
-  
+
   // Update immediately on page load
   updateCoachBar();
-  
+
   // Update every 30 seconds
   setInterval(updateCoachBar, 30000);
-  
+
   // Update when page becomes visible (user returns to tab)
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
@@ -283,7 +283,7 @@
     </div>
   </div>
 
-  <!-- Action Buttons -->
+  <!-- Quick Actions (keep for manual triggers) -->
   <div class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-teal-200">
     <form method="post" action="/actions/gm_brief">
       <button type="submit" class="bg-gradient-to-r from-primary to-teal-600 hover:from-teal-700 hover:to-primary text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm hover:shadow flex items-center">
@@ -406,7 +406,45 @@
   </div>
 </div>
 
-<!-- Notifications List -->
+<!-- Action Cards: Pending Decisions (Owner/GM UX) -->
+{% import 'components/action_card.html' as action_card %}
+{% if pending_recs and pending_recs|length > 0 %}
+<div id="actions" class="mb-8">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-2xl font-bold text-slate-900 flex items-center">
+      <svg class="w-6 h-6 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      Awaiting Your Decision
+      <span class="ml-3 px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-bold">
+        {{ pending_recs|length }}
+      </span>
+    </h2>
+    <a href="/approvals" class="text-sm text-teal-600 hover:text-teal-700 font-medium">
+      View All →
+    </a>
+  </div>
+  
+  <div class="space-y-4">
+    {% for rec in pending_recs[:3] %}
+      {{ action_card.render_action_card(rec) }}
+    {% endfor %}
+  </div>
+  
+  {% if pending_recs|length > 3 %}
+  <div class="mt-4 text-center">
+    <a href="/approvals" class="inline-flex items-center px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-300 hover:border-slate-400 rounded-lg font-semibold transition shadow-sm">
+      View {{ pending_recs|length - 3 }} More Recommendation{{ 's' if pending_recs|length - 3 != 1 else '' }}
+      <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+      </svg>
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Activity Feed (Notifications List) -->
 <div class="space-y-3">
   {% for n in notifications %}
   <a href="/notifications/{{ n['id'] }}" class="block bg-white rounded-lg shadow-sm border {% if not n['is_read'] %}border-primary bg-teal-50{% else %}border-slate-200{% endif %} p-5 hover:shadow-md transition slide-in">
