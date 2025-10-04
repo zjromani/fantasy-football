@@ -172,7 +172,7 @@
       updateCoachBar();
     }
   });
-  
+
   // Scroll to Action Cards section
   function scrollToActions() {
     const actionsSection = document.getElementById('actions');
@@ -459,45 +459,118 @@
 </div>
 {% endif %}
 
-<!-- Activity Feed (Notifications List) -->
-<div class="space-y-3">
-  {% for n in notifications %}
-  <a href="/notifications/{{ n['id'] }}" class="block bg-white rounded-lg shadow-sm border {% if not n['is_read'] %}border-primary bg-teal-50{% else %}border-slate-200{% endif %} p-5 hover:shadow-md transition slide-in">
-    <div class="flex items-start justify-between">
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-3 mb-2">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if n['kind'] == 'brief' %}bg-blue-100 text-blue-800{% elif n['kind'] == 'waivers' %}bg-green-100 text-green-800{% elif n['kind'] == 'trades' %}bg-purple-100 text-purple-800{% elif n['kind'] == 'lineup' %}bg-orange-100 text-orange-800{% else %}bg-slate-100 text-slate-800{% endif %}">
-            {{ n["kind"].upper() }}
-          </span>
-          {% if not n['is_read'] %}
-          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-            NEW
-          </span>
-          {% endif %}
-        </div>
-        <h3 class="text-lg font-semibold text-slate-900 mb-1 {% if not n['is_read'] %}font-bold{% endif %}">
-          {{ n["title"] }}
-        </h3>
-        <p class="text-sm text-slate-600 line-clamp-2">
-          {{ n["body"][:150] }}{% if n["body"]|length > 150 %}...{% endif %}
-        </p>
-      </div>
-      <div class="flex flex-col items-end ml-4 flex-shrink-0">
-        <span class="text-xs text-slate-500 mb-2">{{ n["created_at"] }}</span>
-        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-        </svg>
-      </div>
+<!-- Activity Feed -->
+<div class="mt-8">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold text-slate-900 flex items-center">
+      <svg class="w-5 h-5 mr-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      Activity Feed
+      {% if unread > 0 %}
+      <span class="ml-3 px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">
+        {{ unread }} new
+      </span>
+      {% endif %}
+    </h2>
+    
+    <!-- Filter Tabs -->
+    <div class="flex items-center gap-2">
+      <a href="/" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if not filter_kind %}bg-slate-900 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
+        All
+      </a>
+      <a href="/?kind=brief" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind == 'brief' %}bg-blue-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
+        Briefs
+      </a>
+      <a href="/?kind=waivers" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind == 'waivers' %}bg-green-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
+        Waivers
+      </a>
+      <a href="/?kind=lineup" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind == 'lineup' %}bg-orange-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
+        Lineup
+      </a>
     </div>
-  </a>
-  {% else %}
-  <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
-    <svg class="w-16 h-16 text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
-    </svg>
-    <h3 class="text-lg font-medium text-slate-900 mb-2">No notifications yet</h3>
-    <p class="text-slate-600">Generate your first AI GM Brief to get started!</p>
   </div>
-  {% endfor %}
+  
+  <!-- Feed Items -->
+  <div class="space-y-3">
+    {% for n in notifications %}
+    <a href="/notifications/{{ n['id'] }}" class="block group relative">
+      <!-- Timeline connector -->
+      {% if not loop.last %}
+      <div class="absolute left-4 top-12 bottom-0 w-px bg-slate-200"></div>
+      {% endif %}
+      
+      <div class="bg-white rounded-lg shadow-sm border hover:shadow-md transition {% if not n['is_read'] %}border-teal-400 ring-2 ring-teal-50{% else %}border-slate-200{% endif %}">
+        <div class="flex items-start p-4">
+          <!-- Icon -->
+          <div class="flex-shrink-0 relative z-10">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center {% if n['kind'] == 'brief' %}bg-blue-100{% elif n['kind'] == 'waivers' %}bg-green-100{% elif n['kind'] == 'lineup' %}bg-orange-100{% elif n['kind'] == 'trades' %}bg-purple-100{% else %}bg-slate-100{% endif %}">
+              {% if n['kind'] == 'brief' %}
+              <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+              {% elif n['kind'] == 'waivers' %}
+              <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+              </svg>
+              {% elif n['kind'] == 'lineup' %}
+              <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+              </svg>
+              {% elif n['kind'] == 'trades' %}
+              <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+              </svg>
+              {% else %}
+              <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              {% endif %}
+            </div>
+          </div>
+          
+          <!-- Content -->
+          <div class="ml-4 flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-semibold uppercase tracking-wide {% if n['kind'] == 'brief' %}text-blue-600{% elif n['kind'] == 'waivers' %}text-green-600{% elif n['kind'] == 'lineup' %}text-orange-600{% elif n['kind'] == 'trades' %}text-purple-600{% else %}text-slate-600{% endif %}">
+                {{ n["kind"] }}
+              </span>
+              <span class="text-xs text-slate-400">•</span>
+              <span class="text-xs text-slate-500">{{ n["created_at"][:16] }}</span>
+              {% if not n['is_read'] %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
+                NEW
+              </span>
+              {% endif %}
+            </div>
+            
+            <h3 class="text-base font-semibold text-slate-900 mb-1 group-hover:text-teal-600 transition {% if not n['is_read'] %}font-bold{% endif %}">
+              {{ n["title"] }}
+            </h3>
+            
+            <p class="text-sm text-slate-600 line-clamp-2 leading-relaxed">
+              {{ n["body"][:120] }}{% if n["body"]|length > 120 %}...{% endif %}
+            </p>
+          </div>
+          
+          <!-- Arrow -->
+          <div class="flex-shrink-0 ml-4">
+            <svg class="w-5 h-5 text-slate-300 group-hover:text-teal-500 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </a>
+    {% else %}
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
+      <svg class="w-16 h-16 text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+      </svg>
+      <p class="text-slate-500 text-lg font-medium">No activity yet</p>
+      <p class="text-slate-400 text-sm mt-2">Run "Generate GM Brief" or "Sync with Yahoo" to get started</p>
+    </div>
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}
