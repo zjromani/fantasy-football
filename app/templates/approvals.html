@@ -1,37 +1,65 @@
 {% extends "base.html" %}
+{% block title %}Approvals - Fantasy AI{% endblock %}
 {% block content %}
-<h2>Approvals</h2>
-<table>
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Kind</th>
-      <th>Title</th>
-      <th>Created</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
+<div class="mb-6">
+  <h1 class="text-3xl font-bold text-slate-900 flex items-center">
+    <svg class="w-8 h-8 mr-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+    </svg>
+    Pending Approvals
+  </h1>
+  <p class="text-slate-600 mt-2">Review and approve AI-generated recommendations before they're executed.</p>
+</div>
+
+<div class="space-y-4">
   {% for r in recs %}
-    <tr>
-      <td>{{ r["id"] }}</td>
-      <td><span class="pill">{{ r["kind"] }}</span></td>
-      <td>{{ r["title"] }}</td>
-      <td>{{ r["created_at"] }}</td>
-      <td>
-        <form method="post" action="/approvals/{{ r["id"] }}/approve" style="display:inline;">
-          <button class="btn">Approve</button>
+  <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6 hover:shadow-md transition slide-in">
+    <div class="flex items-start justify-between">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {% if r['kind'] == 'waivers' %}bg-green-100 text-green-800{% elif r['kind'] == 'trades' %}bg-purple-100 text-purple-800{% elif r['kind'] == 'lineup' %}bg-orange-100 text-orange-800{% else %}bg-slate-100 text-slate-800{% endif %}">
+            {{ r["kind"].upper() }}
+          </span>
+          <span class="text-xs text-slate-500">#{{ r["id"] }}</span>
+        </div>
+        <h3 class="text-lg font-semibold text-slate-900 mb-2">{{ r["title"] }}</h3>
+        <p class="text-sm text-slate-600 mb-1">{{ r["body"] }}</p>
+        <p class="text-xs text-slate-500">Created {{ r["created_at"] }}</p>
+      </div>
+      <div class="flex flex-col gap-2 ml-4 flex-shrink-0">
+        <form method="post" action="/approvals/{{ r['id'] }}/approve">
+          <button type="submit" class="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition shadow-sm w-32 justify-center">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            Approve
+          </button>
         </form>
-        <form method="post" action="/approvals/{{ r["id"] }}/deny" style="display:inline;">
-          <button class="btn" style="background:#b91c1c;">Deny</button>
+        <form method="post" action="/approvals/{{ r['id'] }}/deny">
+          <button type="submit" class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm transition shadow-sm w-32 justify-center">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+            Deny
+          </button>
         </form>
-      </td>
-    </tr>
+      </div>
+    </div>
+  </div>
   {% else %}
-    <tr><td colspan="5">No pending items.</td></tr>
+  <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
+    <svg class="w-16 h-16 text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+    </svg>
+    <h3 class="text-lg font-medium text-slate-900 mb-2">All caught up!</h3>
+    <p class="text-slate-600 mb-4">You have no pending approvals at this time.</p>
+    <a href="/" class="inline-flex items-center text-primary hover:text-teal-700 font-medium">
+      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+      </svg>
+      Back to Inbox
+    </a>
+  </div>
   {% endfor %}
-  </tbody>
-</table>
+</div>
 {% endblock %}
-
-

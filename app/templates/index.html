@@ -1,87 +1,192 @@
 {% extends "base.html" %}
+{% block title %}Inbox - Fantasy AI{% endblock %}
 {% block content %}
+<!-- League Settings Banner -->
 {% if league_settings and league_settings.get("scoring") %}
-<div style="padding:0.75rem 1rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:1rem;">
-  <strong>League Settings detected:</strong>
-  <span style="margin-left:0.5rem;">PPR: {{ league_settings["scoring"]["ppr"] }}</span>
-  <span style="margin-left:0.5rem;">Bench: {{ league_settings.get("bench_size") }}</span>
-  {% if league_settings.get("faab_budget") %}
-  <span style="margin-left:0.5rem;">FAAB: {{ league_settings.get("faab_budget") }}</span>
-  {% endif %}
-  {% if league_settings.get("trade_deadline_week") %}
-  <span style="margin-left:0.5rem;">Trade DL: Wk {{ league_settings.get("trade_deadline_week") }}</span>
-  {% endif %}
-  {% if league_settings.get("positional_limits") %}
-  <div style="margin-top:0.25rem; font-size:0.9rem; color:#334155;">
-    Limits — QB {{ league_settings["positional_limits"]["qb"] }}, RB {{ league_settings["positional_limits"]["rb"] }}, WR {{ league_settings["positional_limits"]["wr"] }}, TE {{ league_settings["positional_limits"]["te"] }}, FLEX {{ league_settings["positional_limits"]["flex"] }}{% if league_settings["positional_limits"]["superflex"] and league_settings["positional_limits"]["superflex"]>0 %}, SF {{ league_settings["positional_limits"]["superflex"] }}{% endif %}
+<div class="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-lg p-6 mb-6 shadow-sm slide-in">
+  <div class="flex items-start justify-between">
+    <div class="flex-1">
+      <h2 class="text-lg font-semibold text-slate-900 mb-3 flex items-center">
+        <svg class="w-5 h-5 mr-2 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        League Settings Active
+      </h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+        <div>
+          <span class="text-slate-600 font-medium">Scoring:</span>
+          <span class="ml-2 text-slate-900">{{ "PPR" if league_settings["scoring"]["ppr"] == 1 else ("Half-PPR" if league_settings["scoring"]["ppr"] == 0.5 else "Standard") }}</span>
+        </div>
+        <div>
+          <span class="text-slate-600 font-medium">Bench:</span>
+          <span class="ml-2 text-slate-900">{{ league_settings.get("bench_size", "N/A") }}</span>
+        </div>
+        {% if league_settings.get("faab_budget") %}
+        <div>
+          <span class="text-slate-600 font-medium">FAAB:</span>
+          <span class="ml-2 text-slate-900">${{ league_settings.get("faab_budget") }}</span>
+        </div>
+        {% endif %}
+        {% if league_settings.get("trade_deadline_week") %}
+        <div>
+          <span class="text-slate-600 font-medium">Trade Deadline:</span>
+          <span class="ml-2 text-slate-900">Week {{ league_settings.get("trade_deadline_week") }}</span>
+        </div>
+        {% endif %}
+      </div>
+      {% if league_settings.get("positional_limits") %}
+      <div class="mt-3 text-sm text-slate-600 flex flex-wrap gap-2">
+        <span class="bg-white px-2 py-1 rounded">QB {{ league_settings["positional_limits"]["qb"] }}</span>
+        <span class="bg-white px-2 py-1 rounded">RB {{ league_settings["positional_limits"]["rb"] }}</span>
+        <span class="bg-white px-2 py-1 rounded">WR {{ league_settings["positional_limits"]["wr"] }}</span>
+        <span class="bg-white px-2 py-1 rounded">TE {{ league_settings["positional_limits"]["te"] }}</span>
+        <span class="bg-white px-2 py-1 rounded">FLEX {{ league_settings["positional_limits"]["flex"] }}</span>
+        {% if league_settings["positional_limits"]["superflex"] and league_settings["positional_limits"]["superflex"] > 0 %}
+        <span class="bg-white px-2 py-1 rounded">SF {{ league_settings["positional_limits"]["superflex"] }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
   </div>
-  {% endif %}
-  <form method="post" action="/actions/gm_brief" style="display:inline; margin-left:1rem;">
-    <button class="btn">Post GM Brief</button>
-  </form>
-  <form method="post" action="/actions/waivers_demo" style="display:inline; margin-left:0.5rem;">
-    <button class="btn">Post Waivers Demo</button>
-  </form>
-  <form method="post" action="/actions/ingest_now" style="display:inline; margin-left:0.5rem;">
-    <button class="btn">Run Ingest Now</button>
-  </form>
-  <form method="post" action="/actions/waivers_live" style="display:inline; margin-left:0.5rem;">
-    <button class="btn">Waivers (Live)</button>
-  </form>
-  <form method="post" action="/actions/load_settings" style="display:inline; margin-left:0.5rem;">
-    <button class="btn">Refresh Settings</button>
-  </form>
+  
+  <!-- Action Buttons -->
+  <div class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-teal-200">
+    <form method="post" action="/actions/gm_brief">
+      <button type="submit" class="bg-gradient-to-r from-primary to-teal-600 hover:from-teal-700 hover:to-primary text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm hover:shadow flex items-center">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+        </svg>
+        🤖 AI GM Brief
+      </button>
+    </form>
+    <form method="post" action="/actions/ingest_now">
+      <button type="submit" class="bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-medium text-sm border border-slate-300 transition shadow-sm hover:shadow flex items-center">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        </svg>
+        Sync Yahoo Data
+      </button>
+    </form>
+    <form method="post" action="/actions/waivers_live">
+      <button type="submit" class="bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-medium text-sm border border-slate-300 transition shadow-sm hover:shadow flex items-center">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+        </svg>
+        Analyze Waivers
+      </button>
+    </form>
+    <form method="post" action="/actions/load_settings">
+      <button type="submit" class="bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-medium text-sm border border-slate-300 transition shadow-sm hover:shadow flex items-center">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        </svg>
+        Refresh Settings
+      </button>
+    </form>
+  </div>
 </div>
 {% else %}
-<div style="padding:0.75rem 1rem; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin-bottom:1rem;">
-  <strong>No League Settings yet.</strong> Load via the OAuth scripts in the README or <a href="/oauth/start">Connect Yahoo</a>.
-  <form method="post" action="/actions/gm_brief" style="display:inline; margin-left:1rem;">
-    <button class="btn">Post GM Brief</button>
-  </form>
-  <form method="post" action="/actions/waivers_demo" style="display:inline; margin-left:0.5rem;">
-    <button class="btn">Post Waivers Demo</button>
-  </form>
-  <form method="post" action="/actions/load_settings" style="display:inline; margin-left:0.5rem;">
-    <button class="btn">Load Settings</button>
-  </form>
+<div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-6 mb-6 shadow-sm slide-in">
+  <div class="flex items-start">
+    <svg class="w-6 h-6 text-amber-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+    </svg>
+    <div class="flex-1">
+      <h3 class="font-semibold text-slate-900 mb-2">No League Settings Loaded</h3>
+      <p class="text-sm text-slate-600 mb-4">Connect your Yahoo account to enable AI-powered recommendations.</p>
+      <div class="flex flex-wrap gap-2">
+        <a href="/oauth/start" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm hover:shadow inline-flex items-center">
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+          </svg>
+          Connect Yahoo
+        </a>
+        <form method="post" action="/actions/load_settings" class="inline">
+          <button type="submit" class="bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-medium text-sm border border-slate-300 transition shadow-sm hover:shadow">
+            Load Settings
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
 {% endif %}
-<div class="filters">
-  <strong>Filter:</strong>
-  <a href="/" {% if not filter_kind %}class="unread"{% endif %}>All</a>
-  <a href="/?kind=lineup" {% if filter_kind=='lineup' %}class="unread"{% endif %}>Lineup</a>
-  <a href="/?kind=waivers" {% if filter_kind=='waivers' %}class="unread"{% endif %}>Waivers</a>
-  <a href="/?kind=trades" {% if filter_kind=='trades' %}class="unread"{% endif %}>Trades</a>
-  <a href="/?kind=survivor" {% if filter_kind=='survivor' %}class="unread"{% endif %}>Survivor</a>
-  <a href="/?kind=info" {% if filter_kind=='info' %}class="unread"{% endif %}>Info</a>
-  <form method="post" action="/actions/notifications/mark_all_read" style="display:inline; margin-left:1rem;">
-    <button class="btn">Mark all as read</button>
-  </form>
-  <hr>
+
+<!-- Filters & Actions -->
+<div class="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-6 slide-in">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-sm font-medium text-slate-600 mr-2">Filter:</span>
+      <a href="/" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if not filter_kind %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+        All
+      </a>
+      <a href="/?kind=brief" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='brief' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+        📊 Brief
+      </a>
+      <a href="/?kind=lineup" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='lineup' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+        👥 Lineup
+      </a>
+      <a href="/?kind=waivers" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='waivers' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+        ➕ Waivers
+      </a>
+      <a href="/?kind=trades" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='trades' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+        🔄 Trades
+      </a>
+      <a href="/?kind=info" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='info' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+        ℹ️ Info
+      </a>
+    </div>
+    <form method="post" action="/actions/notifications/mark_all_read">
+      <button type="submit" class="text-slate-600 hover:text-slate-900 text-sm font-medium flex items-center transition">
+        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        Mark all read
+      </button>
+    </form>
+  </div>
 </div>
 
-<table>
-  <thead>
-    <tr>
-      <th>Title</th>
-      <th>Kind</th>
-      <th>Created</th>
-      <th>Status</th>
-    </tr>
-  </thead>
-  <tbody>
+<!-- Notifications List -->
+<div class="space-y-3">
   {% for n in notifications %}
-    <tr class="{% if not n["is_read"] %}unread{% endif %}">
-      <td><a href="/notifications/{{ n["id"] }}">{{ n["title"] }}</a></td>
-      <td><span class="pill">{{ n["kind"] }}</span></td>
-      <td>{{ n["created_at"] }}</td>
-      <td>{% if n["is_read"] %}Read{% else %}Unread{% endif %}</td>
-    </tr>
+  <a href="/notifications/{{ n['id'] }}" class="block bg-white rounded-lg shadow-sm border {% if not n['is_read'] %}border-primary bg-teal-50{% else %}border-slate-200{% endif %} p-5 hover:shadow-md transition slide-in">
+    <div class="flex items-start justify-between">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-3 mb-2">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if n['kind'] == 'brief' %}bg-blue-100 text-blue-800{% elif n['kind'] == 'waivers' %}bg-green-100 text-green-800{% elif n['kind'] == 'trades' %}bg-purple-100 text-purple-800{% elif n['kind'] == 'lineup' %}bg-orange-100 text-orange-800{% else %}bg-slate-100 text-slate-800{% endif %}">
+            {{ n["kind"].upper() }}
+          </span>
+          {% if not n['is_read'] %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            NEW
+          </span>
+          {% endif %}
+        </div>
+        <h3 class="text-lg font-semibold text-slate-900 mb-1 {% if not n['is_read'] %}font-bold{% endif %}">
+          {{ n["title"] }}
+        </h3>
+        <p class="text-sm text-slate-600 line-clamp-2">
+          {{ n["body"][:150] }}{% if n["body"]|length > 150 %}...{% endif %}
+        </p>
+      </div>
+      <div class="flex flex-col items-end ml-4 flex-shrink-0">
+        <span class="text-xs text-slate-500 mb-2">{{ n["created_at"] }}</span>
+        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+        </svg>
+      </div>
+    </div>
+  </a>
   {% else %}
-    <tr><td colspan="4">No notifications.</td></tr>
+  <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-12 text-center">
+    <svg class="w-16 h-16 text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+    </svg>
+    <h3 class="text-lg font-medium text-slate-900 mb-2">No notifications yet</h3>
+    <p class="text-slate-600">Generate your first AI GM Brief to get started!</p>
+  </div>
   {% endfor %}
-  </tbody>
-</table>
+</div>
 {% endblock %}
-
-

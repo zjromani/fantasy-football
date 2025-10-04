@@ -1,38 +1,117 @@
 {% extends "base.html" %}
+{% block title %}{{ n["title"] }} - Fantasy AI{% endblock %}
 {% block content %}
-<article>
-  <h2>{{ n["title"] }}</h2>
-  <p class="kind">{{ n["kind"] }} • {{ n["created_at"] }}</p>
-  <p>{{ n["body"] }}</p>
-  <details>
-    <summary>Payload</summary>
-    <pre style="white-space:pre-wrap">{{ n["payload"] }}</pre>
-  </details>
+<!-- Back Button -->
+<div class="mb-4">
+  <a href="/" class="inline-flex items-center text-slate-600 hover:text-slate-900 transition">
+    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+    </svg>
+    Back to Inbox
+  </a>
+</div>
 
-  {% if payload_obj and payload_obj.get("pending_actions") %}
-  <div style="margin-top:1rem; padding:0.75rem; border:1px solid #e2e8f0; border-radius:8px;">
-    <strong>Requires approval</strong>
-    {% for act in payload_obj.get("pending_actions", []) %}
-      {% if act.get("type") == "waiver" %}
-        <form method="post" action="/actions/approve_waiver" style="display:inline; margin-right:0.5rem;">
-          <input type="hidden" name="add_player_id" value="{{ act.get('add_player_id','') }}" />
-          <input type="hidden" name="drop_player_id" value="{{ act.get('drop_player_id','') }}" />
-          <input type="hidden" name="bid_amount" value="{{ act.get('bid_amount',0) }}" />
-          <button class="btn">Approve waiver</button>
+<!-- Main Content Card -->
+<article class="bg-white rounded-lg shadow-lg border border-slate-200 overflow-hidden slide-in">
+  <!-- Header -->
+  <div class="bg-gradient-to-r from-teal-50 to-cyan-50 border-b border-teal-100 p-6">
+    <div class="flex items-start justify-between mb-4">
+      <div class="flex-1">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {% if n['kind'] == 'brief' %}bg-blue-500 text-white{% elif n['kind'] == 'waivers' %}bg-green-500 text-white{% elif n['kind'] == 'trades' %}bg-purple-500 text-white{% elif n['kind'] == 'lineup' %}bg-orange-500 text-white{% else %}bg-slate-500 text-white{% endif %}">
+            {{ n["kind"].upper() }}
+          </span>
+          {% if not n['is_read'] %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-500 text-white">
+            UNREAD
+          </span>
+          {% endif %}
+        </div>
+        <h1 class="text-2xl font-bold text-slate-900 mb-2">{{ n["title"] }}</h1>
+        <p class="text-sm text-slate-600">
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          {{ n["created_at"] }}
+        </p>
+      </div>
+      <div class="flex gap-2">
+        {% if not n['is_read'] %}
+        <form method="post" action="/notifications/{{ n['id'] }}/read">
+          <button type="submit" class="inline-flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition shadow-sm">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            Mark as Read
+          </button>
         </form>
-        <form method="post" action="/actions/deny_waiver" style="display:inline;">
-          <input type="hidden" name="add_player_id" value="{{ act.get('add_player_id','') }}" />
-          <button class="btn" style="background:#b91c1c;">Deny</button>
-        </form>
-      {% endif %}
-    {% endfor %}
+        {% endif %}
+      </div>
+    </div>
   </div>
-  {% endif %}
 
-  <form method="post" action="/notifications/{{ n["id"] }}/read">
-    <button class="btn" {% if n["is_read"] %}disabled{% endif %}>Mark as read</button>
-  </form>
+  <!-- Body Content -->
+  <div class="p-6">
+    <div class="prose prose-slate max-w-none">
+      <div class="text-slate-700 whitespace-pre-wrap">{{ n["body"] }}</div>
+    </div>
+
+    <!-- Pending Actions (Approval Required) -->
+    {% if payload_obj and payload_obj.get("pending_actions") %}
+    <div class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+      <h3 class="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+        <svg class="w-5 h-5 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+        Requires Your Approval
+      </h3>
+      {% for act in payload_obj.get("pending_actions", []) %}
+        {% if act.get("type") == "waiver" %}
+        <div class="bg-white rounded-lg p-4 shadow-sm">
+          <p class="text-sm text-slate-600 mb-4">
+            <strong class="text-slate-900">Waiver Claim:</strong> Add {{ act.get('add_player_id', 'Unknown Player') }}
+            {% if act.get('bid_amount') %}for ${{ act.get('bid_amount') }} FAAB{% endif %}
+          </p>
+          <div class="flex gap-2">
+            <form method="post" action="/actions/approve_waiver" class="inline">
+              <input type="hidden" name="add_player_id" value="{{ act.get('add_player_id','') }}" />
+              <input type="hidden" name="drop_player_id" value="{{ act.get('drop_player_id','') }}" />
+              <input type="hidden" name="bid_amount" value="{{ act.get('bid_amount',0) }}" />
+              <button type="submit" class="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition shadow-sm">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Approve & Execute
+              </button>
+            </form>
+            <form method="post" action="/actions/deny_waiver" class="inline">
+              <input type="hidden" name="add_player_id" value="{{ act.get('add_player_id','') }}" />
+              <button type="submit" class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-sm transition shadow-sm">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+                Deny
+              </button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Payload Details (Collapsible) -->
+    <details class="mt-6 group">
+      <summary class="cursor-pointer flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 transition">
+        <svg class="w-4 h-4 mr-2 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+        </svg>
+        View Raw Data
+      </summary>
+      <div class="mt-3 p-4 bg-slate-50 rounded-lg border border-slate-200 overflow-x-auto">
+        <pre class="text-xs text-slate-700"><code>{{ n["payload"] }}</code></pre>
+      </div>
+    </details>
+  </div>
 </article>
 {% endblock %}
-
-
