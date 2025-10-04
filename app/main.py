@@ -273,8 +273,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
     # Fetch top pending recommendations for Action Cards
     pending_recs = []
     try:
-        from app.store import get_pending_recommendations
-        pending_recs_raw = get_pending_recommendations()
+        pending_recs_raw = list_recommendations(status="pending")
         # Parse payload JSON for each recommendation
         for rec in pending_recs_raw:
             try:
