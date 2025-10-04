@@ -169,6 +169,89 @@ def dashboard_summary():
         conn.close()
 
 
+@app.get("/analytics/league_health")
+def analytics_league_health():
+    """
+    League Health Dashboard: Power rankings, positional grades, and trade targets.
+    
+    Returns comprehensive analytics for all teams in the league:
+    - Team Power Index rankings
+    - Positional depth grades (A/B/C/D/F)
+    - Strongest/weakest teams
+    - Your team's standing
+    """
+    from fastapi.responses import JSONResponse
+    from .analytics import league_health_snapshot
+    
+    payload = latest_settings_payload()
+    if not payload:
+        return JSONResponse(
+            {"error": "No league data available. Run 'Sync Yahoo Data' first."},
+            status_code=404
+        )
+    
+    settings = LeagueSettings(**payload)
+    cfg = get_settings()
+    my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
+    
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        
+        # Get current week
+        cur.execute("SELECT MAX(week) FROM matchups")
+        result = cur.fetchone()
+        current_week = result[0] if result and result[0] else 1
+        
+        # Generate league snapshot
+        snapshot = league_health_snapshot(settings, current_week, my_team_id)
+        
+        # Serialize to JSON-friendly format
+        return JSONResponse({
+            "current_week": snapshot.current_week,
+            "total_teams": snapshot.total_teams,
+            "my_team": {
+                "team_id": snapshot.my_team.team_id,
+                "team_name": snapshot.my_team.team_name,
+                "rank": snapshot.my_team.rank,
+                "power_index": snapshot.my_team.power_index,
+                "projected_points": snapshot.my_team.projected_points,
+                "positional_grades": {
+                    pos: {
+                        "grade": grade.grade,
+                        "starter_avg": grade.starter_avg,
+                        "depth_count": grade.depth_count,
+                        "injury_risk": grade.injury_risk
+                    }
+                    for pos, grade in snapshot.my_team.positional_grades.items()
+                },
+                "injury_count": snapshot.my_team.injury_count,
+                "bye_exposure": snapshot.my_team.bye_exposure,
+            } if snapshot.my_team else None,
+            "strongest_teams": [
+                {
+                    "team_name": t.team_name,
+                    "manager": t.manager,
+                    "power_index": t.power_index,
+                    "rank": t.rank
+                }
+                for t in snapshot.strongest_teams
+            ],
+            "weakest_teams": [
+                {
+                    "team_name": t.team_name,
+                    "manager": t.manager,
+                    "power_index": t.power_index,
+                    "rank": t.rank
+                }
+                for t in snapshot.weakest_teams
+            ],
+        })
+        
+    finally:
+        conn.close()
+
+
 @app.get("/")
 def list_notifications(request: Request, kind: Optional[str] = None):
     rows = inbox_list(kind)
@@ -183,7 +266,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
         # Parse payload JSON for each recommendation
         for rec in pending_recs_raw:
             try:
-                rec["payload_obj"] = json.loads(rec.get("payload") or "{}")
+                rec["payload_obj"] = _json.loads(rec.get("payload") or "{}")
             except:
                 rec["payload_obj"] = {}
             pending_recs.append(rec)
@@ -377,7 +460,7 @@ def approvals(request: Request):
             try:
                 payload = rec["payload"]
                 if isinstance(payload, str):
-                    rec["payload_obj"] = json.loads(payload)
+                    rec["payload_obj"] = _json.loads(payload)
                 else:
                     rec["payload_obj"] = payload
             except Exception as e:
