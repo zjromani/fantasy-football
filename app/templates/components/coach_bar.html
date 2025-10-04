@@ -1,0 +1,120 @@
+<!-- Coach Bar: Always-visible status strip showing key metrics -->
+<div class="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white shadow-lg sticky top-0 z-50 border-b border-slate-700">
+  <div class="max-w-7xl mx-auto px-4 py-3">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      
+      <!-- Left: Week & Opponent -->
+      <div class="flex items-center space-x-6">
+        <div class="flex items-center">
+          <svg class="w-5 h-5 mr-2 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">Week {{ current_week }}</div>
+            <div class="text-sm font-semibold">
+              {% if opponent %}
+                vs {{ opponent.name[:20] }}
+              {% else %}
+                No opponent
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        
+        {% if opponent %}
+        <div class="hidden sm:flex items-center">
+          <div class="text-xs text-slate-400">Win Chance</div>
+          <div class="ml-2 text-lg font-bold text-teal-400">
+            {{ win_chance or "50" }}%
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      
+      <!-- Middle: Team Status -->
+      <div class="flex items-center space-x-4">
+        <!-- Starters Ready -->
+        <div class="flex items-center">
+          <svg class="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">Ready</div>
+            <div class="text-sm font-semibold">{{ starters_ready or 0 }}/{{ total_starters or 9 }}</div>
+          </div>
+        </div>
+        
+        <!-- Injuries -->
+        {% if injury_count > 0 %}
+        <div class="flex items-center">
+          <svg class="w-5 h-5 mr-2 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">Injuries</div>
+            <div class="text-sm font-semibold text-red-400">{{ injury_count }}</div>
+          </div>
+        </div>
+        {% endif %}
+        
+        <!-- FAAB -->
+        <div class="flex items-center">
+          <svg class="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">FAAB</div>
+            <div class="text-sm font-semibold">${{ faab_remaining or 0 }}</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right: Sync Status -->
+      <div class="flex items-center space-x-4">
+        <!-- Waiver Deadline -->
+        {% if waiver_deadline %}
+        <div class="hidden md:flex items-center">
+          <svg class="w-5 h-5 mr-2 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">Waivers</div>
+            <div class="text-sm font-semibold">{{ waiver_deadline }}</div>
+          </div>
+        </div>
+        {% endif %}
+        
+        <!-- Last Sync -->
+        <div class="flex items-center">
+          <div class="relative">
+            <svg class="w-5 h-5 mr-2 {% if sync_status == 'syncing' %}animate-spin text-teal-400{% elif sync_status == 'success' %}text-green-400{% else %}text-slate-400{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            {% if pending_count > 0 %}
+            <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">{{ pending_count }}</span>
+            {% endif %}
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">Synced</div>
+            <div class="text-xs font-medium">{{ last_sync or "Never" }}</div>
+          </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <button 
+          onclick="window.location.href='#actions'"
+          class="ml-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center"
+        >
+          {% if pending_count > 0 %}
+            <span class="mr-2">{{ pending_count }}</span>
+            <span class="hidden sm:inline">Action{{ 's' if pending_count != 1 else '' }}</span>
+          {% else %}
+            <span>All Set</span>
+          {% endif %}
+        </button>
+      </div>
+      
+    </div>
+  </div>
+</div>
+

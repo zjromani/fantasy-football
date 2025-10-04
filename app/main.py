@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request, HTTPException, status, Form
 from fastapi.responses import RedirectResponse
@@ -63,6 +64,109 @@ def api_projections(week: int, position: Optional[str] = None):
         "count": len(projections),
         "projections": [p.to_dict() for p in projections[:100]]  # Limit response size
     })
+
+
+@app.get("/api/dashboard/summary")
+def dashboard_summary():
+    """
+    Lightweight endpoint for Coach Bar status.
+    Returns key metrics without heavy computation.
+    """
+    # Get current week
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(week) FROM matchups")
+        result = cur.fetchone()
+        current_week = result[0] if result and result[0] else 1
+        
+        # Get my team info
+        cfg = get_settings()
+        my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
+        
+        # Count starters and injuries
+        starters_ready = 0
+        total_starters = 0
+        injury_count = 0
+        
+        if my_team_id:
+            cur.execute("""
+                SELECT p.position, r.slot, r.status
+                FROM rosters r
+                JOIN players p ON r.player_id = p.id
+                WHERE r.team_id = ? AND r.week = ?
+            """, (my_team_id, current_week))
+            
+            for row in cur.fetchall():
+                slot = row[1]
+                status = row[2]
+                
+                # Count starters (not BN or IR)
+                if slot and slot not in ["BN", "IR"]:
+                    total_starters += 1
+                    if status not in ["O", "IR", "D"]:
+                        starters_ready += 1
+                
+                # Count injuries
+                if status in ["O", "IR", "D", "Q"]:
+                    injury_count += 1
+        
+        # Get opponent for this week
+        opponent = None
+        if my_team_id:
+            cur.execute("""
+                SELECT t.name
+                FROM matchups m
+                JOIN teams t ON m.opponent_id = t.id
+                WHERE m.team_id = ? AND m.week = ?
+            """, (my_team_id, current_week))
+            result = cur.fetchone()
+            if result:
+                opponent = {"name": result[0]}
+        
+        # Get FAAB remaining from league settings
+        payload = latest_settings_payload()
+        faab_remaining = 100  # Default
+        if payload:
+            faab_budget = payload.get("faab_budget", 100)
+            # TODO: Track actual FAAB spent
+            faab_remaining = faab_budget
+        
+        # Get last sync time
+        cur.execute("SELECT MAX(created_at) FROM snapshots")
+        result = cur.fetchone()
+        last_sync = None
+        if result and result[0]:
+            try:
+                last_sync_dt = datetime.fromisoformat(result[0])
+                delta = datetime.now() - last_sync_dt
+                if delta < timedelta(minutes=5):
+                    last_sync = "Just now"
+                elif delta < timedelta(hours=1):
+                    last_sync = f"{int(delta.total_seconds() / 60)}m ago"
+                else:
+                    last_sync = f"{int(delta.total_seconds() / 3600)}h ago"
+            except:
+                last_sync = "Unknown"
+        
+        # Count pending approvals
+        pending_count = count_pending_recommendations()
+        
+        return {
+            "current_week": current_week,
+            "opponent": opponent,
+            "win_chance": 50,  # TODO: Calculate from projections
+            "starters_ready": starters_ready,
+            "total_starters": max(total_starters, 9),
+            "injury_count": injury_count,
+            "faab_remaining": faab_remaining,
+            "waiver_deadline": "Wed 12:00am",  # TODO: Get from league settings
+            "last_sync": last_sync,
+            "sync_status": "success",
+            "pending_count": pending_count,
+        }
+    finally:
+        conn.close()
 
 
 @app.get("/")
