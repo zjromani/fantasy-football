@@ -52,13 +52,13 @@
             {% for player in starters %}
             <div class="bg-gradient-to-br from-white to-green-50 rounded px-3 py-2 flex items-center justify-between border-2 border-green-200 hover:border-green-400 transition shadow-sm">
               <div class="flex items-center space-x-2 min-w-0 flex-1">
-                <span class="font-bold text-{{ 
-                  'blue-600' if player.position == 'QB' else 
-                  'green-600' if player.position == 'RB' else 
-                  'orange-600' if player.position == 'WR' else 
-                  'purple-600' if player.position == 'TE' else 
-                  'pink-600' if player.position == 'K' else 
-                  'slate-600' 
+                <span class="font-bold text-{{
+                  'blue-600' if player.position == 'QB' else
+                  'green-600' if player.position == 'RB' else
+                  'orange-600' if player.position == 'WR' else
+                  'purple-600' if player.position == 'TE' else
+                  'pink-600' if player.position == 'K' else
+                  'slate-600'
                 }} text-[10px] w-7 text-center">{{ player.position }}</span>
                 <div class="min-w-0 flex-1">
                   <div class="font-semibold text-slate-900 truncate">{{ player.name }}</div>
@@ -75,7 +75,7 @@
           </div>
         </div>
         {% endif %}
-        
+
         <!-- Bench Section -->
         {% set bench = my_lineup | rejectattr('is_starter', 'equalto', True) | list %}
         {% if bench %}

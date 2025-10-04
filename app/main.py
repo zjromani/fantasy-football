@@ -90,14 +90,14 @@ def list_notifications(request: Request, kind: Optional[str] = None):
             cur.execute("SELECT MAX(week) FROM matchups")
             current_week_result = cur.fetchone()
             current_week = current_week_result[0] if current_week_result else 1
-            
+
             cur.execute("""
                 SELECT p.name, p.position, p.team, p.bye_week, r.status
                 FROM rosters r
                 JOIN players p ON r.player_id = p.id
                 WHERE r.team_id = ? AND r.week = ?
                 GROUP BY p.name, p.position, p.team
-                ORDER BY 
+                ORDER BY
                     CASE p.position
                         WHEN 'QB' THEN 1
                         WHEN 'RB' THEN 2
@@ -109,22 +109,22 @@ def list_notifications(request: Request, kind: Optional[str] = None):
                     END,
                     p.name
             """, (my_team_id, current_week))
-            
+
             # Categorize as starter or bench based on position limits
             pos_settings = settings_payload.get("roster_slots", {}) if settings_payload else {}
             pos_count = {}
-            
+
             for row in cur.fetchall():
                 position = row[1]
                 count = pos_count.get(position, 0)
-                
+
                 # Determine if starter based on typical roster slots
                 max_starters = pos_settings.get(position, {
                     'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DEF': 1
                 }.get(position, 0))
-                
+
                 is_starter = count < max_starters
-                
+
                 my_lineup.append({
                     "name": row[0],
                     "position": row[1],
@@ -133,7 +133,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
                     "status": row[4] or "Active",
                     "is_starter": is_starter
                 })
-                
+
                 pos_count[position] = count + 1
         except:
             pass

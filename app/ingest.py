@@ -91,6 +91,35 @@ def ingest(client: YahooClient, league_key: str, *, cache_dir: Optional[str] = N
 def persist_bundle(bundle: Dict[str, Any]) -> None:
     # Defensive parsing; if shapes are unexpected, skip rather than error
     import json as _json
+    
+    # First, clear old roster data for the current week to ensure fresh data
+    from .db import get_connection
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        # Get current week from league data
+        league_data = bundle.get("league", {})
+        current_week = None
+        try:
+            if isinstance(league_data, dict):
+                fc = league_data.get("fantasy_content", {})
+                if isinstance(fc, dict):
+                    league_list = fc.get("league")
+                    if isinstance(league_list, list) and len(league_list) > 0:
+                        league_obj = league_list[0] if isinstance(league_list[0], dict) else {}
+                        current_week = league_obj.get("current_week")
+        except:
+            pass
+        
+        if current_week:
+            # Clear ALL roster data (we'll repopulate with fresh data)
+            cur.execute("DELETE FROM rosters WHERE week = ?", (int(current_week),))
+            conn.commit()
+            print(f"[INGEST] Cleared stale roster data for week {current_week}")
+    except Exception as e:
+        print(f"[INGEST] Warning: Could not clear roster data: {e}")
+    finally:
+        conn.close()
 
     def _flatten_yahoo_list(obj: Any) -> dict:
         """Yahoo returns objects as lists of single-key dicts. Flatten to one dict."""
