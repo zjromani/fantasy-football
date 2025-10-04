@@ -95,16 +95,16 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
 def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
     """Generate AI-powered GM brief using OpenAI."""
     context = _get_league_context(settings)
-    
+
     # Run lineup optimizer to get sit/start recommendations
     lineup_recommendations = []
     try:
         from .lineup_actions import get_roster_for_optimization
         from .lineup_enhanced import optimize_lineup_enhanced
-        
+
         current_week = context.get('current_week', 1)
         roster = get_roster_for_optimization(current_week)
-        
+
         if roster:
             recs = optimize_lineup_enhanced(
                 settings=settings,
@@ -112,7 +112,7 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
                 week=current_week,
                 min_confidence=60.0  # Lower threshold for GM Brief
             )
-            
+
             # Format for AI context
             for rec in recs[:3]:  # Top 3 recommendations
                 lineup_recommendations.append({
@@ -170,6 +170,18 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
 
             roster_detail.append(player_info)
 
+        # Build explicit bye week info
+        current_week = context.get('current_week', 1)
+        players_on_bye_this_week = [
+            p['name'] for p in roster_detail 
+            if p.get('bye_week') == current_week
+        ]
+        bye_info = f"\n\nPLAYERS ON BYE THIS WEEK ({current_week}): "
+        if players_on_bye_this_week:
+            bye_info += ", ".join(players_on_bye_this_week)
+        else:
+            bye_info += "NONE - all players are available this week! ✅"
+        
         # Build prompt for OpenAI
         lineup_recs_text = ""
         if lineup_recommendations:
@@ -178,7 +190,7 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
             lineup_recs_text += "\nNote: These are AI-generated sit/start recommendations based on projections, news, weather, and injury risk."
         else:
             lineup_recs_text = "\n\nLINEUP OPTIMIZER: Your current lineup appears optimal. No changes recommended."
-        
+
         prompt = f"""You are an expert fantasy football advisor for NFL Week {context.get('current_week', '?')}.
 Generate a concise, actionable GM brief for the user's fantasy team.
 
@@ -190,6 +202,9 @@ LEAGUE SETTINGS:
 YOUR CURRENT ROSTER ({len(roster_detail)} players):
 {_json.dumps(roster_detail, indent=2)}
 Note: projected_pts shown where available (may be None if projections not configured)
+{bye_info}
+IMPORTANT: bye_week is the FUTURE week the player is on bye, NOT this week. 
+  Example: If current week is 5 and player has bye_week=8, they are AVAILABLE this week.
 {lineup_recs_text}
 
 LATEST NFL NEWS (use this for injury/status updates):
@@ -215,7 +230,8 @@ IMPORTANT INSTRUCTIONS:
 - If optimizer suggests changes, incorporate them into your Lineup section with additional context
 - Provide FAAB bid ranges (e.g., $5-8) for waiver recommendations based on league budget
 - Focus on THIS week's matchups and decisions
-- If a player is on bye this week (check bye_week field), flag it prominently
+- CRITICAL: A player is on bye THIS week ONLY if bye_week == current_week ({context.get('current_week', '?')})
+- Do NOT say a player is on bye if their bye_week is in the future (e.g., Week 8 when current is Week 5)
 
 Generate a brief with these sections:
 1. **🎯 Actions** (3-4 items): Immediate action items for this week
