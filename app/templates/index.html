@@ -473,7 +473,7 @@
       </span>
       {% endif %}
     </h2>
-    
+
     <!-- Filter Tabs -->
     <div class="flex items-center gap-2">
       <a href="/" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if not filter_kind %}bg-slate-900 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
@@ -490,7 +490,7 @@
       </a>
     </div>
   </div>
-  
+
   <!-- Feed Items -->
   <div class="space-y-3">
     {% for n in notifications %}
@@ -499,7 +499,7 @@
       {% if not loop.last %}
       <div class="absolute left-4 top-12 bottom-0 w-px bg-slate-200"></div>
       {% endif %}
-      
+
       <div class="bg-white rounded-lg shadow-sm border hover:shadow-md transition {% if not n['is_read'] %}border-teal-400 ring-2 ring-teal-50{% else %}border-slate-200{% endif %}">
         <div class="flex items-start p-4">
           <!-- Icon -->
@@ -528,7 +528,7 @@
               {% endif %}
             </div>
           </div>
-          
+
           <!-- Content -->
           <div class="ml-4 flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
@@ -543,16 +543,16 @@
               </span>
               {% endif %}
             </div>
-            
+
             <h3 class="text-base font-semibold text-slate-900 mb-1 group-hover:text-teal-600 transition {% if not n['is_read'] %}font-bold{% endif %}">
               {{ n["title"] }}
             </h3>
-            
+
             <p class="text-sm text-slate-600 line-clamp-2 leading-relaxed">
               {{ n["body"][:120] }}{% if n["body"]|length > 120 %}...{% endif %}
             </p>
           </div>
-          
+
           <!-- Arrow -->
           <div class="flex-shrink-0 ml-4">
             <svg class="w-5 h-5 text-slate-300 group-hover:text-teal-500 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
