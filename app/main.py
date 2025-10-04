@@ -250,7 +250,7 @@ def action_optimize_lineup():
 def approvals(request: Request):
     """List pending recommendations with parsed payloads."""
     recs = list_recommendations(status="pending")
-    
+
     # Parse payload JSON for each recommendation
     for rec in recs:
         if rec.get("payload"):
@@ -265,7 +265,7 @@ def approvals(request: Request):
                 rec["payload_obj"] = {}
         else:
             rec["payload_obj"] = {}
-    
+
     return templates.TemplateResponse(request, "approvals.html", {"recs": recs})
 
 
@@ -290,23 +290,23 @@ def approve(rec_id: int):
             except Exception as e:
                 print(f"[APPROVE] Failed to parse payload: {e}")
                 payload = {}
-            
+
             settings = get_settings()
             league_key = normalize_league_key(settings.league_key)
             team_key = settings.team_key
             if not league_key or not team_key:
                 raise RuntimeError("LEAGUE_KEY and TEAM_KEY must be set in env for Yahoo writes")
-            
+
             # Enhanced format: add_player_id, drop_player_id, faab_min
             add_player_id = payload.get("add_player_id")
             drop_player_id = payload.get("drop_player_id")
             faab = payload.get("faab_min", 0)
             add_player_name = payload.get("add_player_name", "Unknown")
             drop_player_name = payload.get("drop_player_name")
-            
+
             if not add_player_id:
                 raise RuntimeError("Missing add_player_id in recommendation payload")
-            
+
             # Build Yahoo transaction XML
             # If drop_player_id exists, it's an add/drop. Otherwise, just add.
             if drop_player_id:
@@ -344,20 +344,20 @@ def approve(rec_id: int):
   </transaction>
 </fantasy_content>""".strip()
                 action_desc = f"Add {add_player_name}"
-            
+
             # Submit to Yahoo
             client = YahooClient()
             resp = client.post_xml(f"league/{league_key}/transactions", xml)
-            
+
             # Log transaction
             insert_transaction_raw(
                 kind="waiver_submit",
                 team_id=None,
                 raw=f"request={_json.dumps({'xml': xml})}; response={resp.text}"
             )
-            
+
             # Confirm to user
-            notify("info", "✅ Waiver Claim Submitted", 
+            notify("info", "✅ Waiver Claim Submitted",
                   f"{action_desc} with ${int(faab)} FAAB bid. Check Yahoo for confirmation.",
                   {"rec_id": rec_id, "yahoo_response": resp.text[:200]})
     except Exception as err:

@@ -137,11 +137,11 @@ def analyze_waivers_enhanced(
     for fa in free_agents:
         name = fa["name"]
         position = fa["position"]
-
+        
         # Skip non-fantasy positions
         if position not in ["QB", "RB", "WR", "TE", "K", "DEF"]:
             continue
-
+        
         # Get projection
         proj_obj = proj_dict.get(name.lower())
         if proj_obj:
@@ -152,11 +152,20 @@ def analyze_waivers_enhanced(
             else:
                 projection = proj_obj.fantasy_points_standard or 0
         else:
-            # Fallback to basic scoring
-            projection = fa.get("proj_base", 0.0)
-
+            # Better fallback: use position-specific baselines
+            # If no projections available, use Yahoo's ownership % as a rough proxy
+            ownership = fa.get("ownership_pct", 0)
+            if ownership > 50:
+                # Likely a starter
+                position_baseline = {"QB": 18, "RB": 12, "WR": 10, "TE": 8, "K": 8, "DEF": 8}
+                projection = position_baseline.get(position, 10.0)
+            else:
+                # Likely a backup or low-value player
+                projection = 5.0
+        
         # Skip very low projections (not fantasy-relevant)
-        if projection < 5.0:
+        # Raise threshold to filter out more low-value players
+        if projection < 8.0:
             continue
 
         # Find best drop candidate (lowest projected bench player at same position)
@@ -177,8 +186,16 @@ def analyze_waivers_enhanced(
                     else:
                         bp = bench_proj_obj.fantasy_points_standard or 0
                 else:
-                    bp = 5.0  # Default
-
+                    # Better fallback for bench players
+                    # If they're on my bench, assume they have some value
+                    # Use position baseline adjusted for injury status
+                    if bench_p.get("status") in ["O", "D", "IR"]:
+                        bp = 0.0  # Injured players worth nothing
+                    else:
+                        # Assume bench players are worth ~40% of a starter
+                        position_baseline = {"QB": 18, "RB": 12, "WR": 10, "TE": 8, "K": 8, "DEF": 8}
+                        bp = position_baseline.get(position, 10.0) * 0.4
+                
                 bench_with_proj.append((bench_p, bp))
 
             # Sort by projection (lowest first)
