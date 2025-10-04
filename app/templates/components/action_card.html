@@ -229,10 +229,10 @@
   document.addEventListener('keydown', (e) => {
     // Skip if user is typing in an input field
     if (e.target.matches('input, textarea, select')) return;
-    
+
     const firstCard = document.querySelector('.action-card:not([style*="opacity: 0"])');
     if (!firstCard) return;
-    
+
     if (e.key.toLowerCase() === 'a') {
       e.preventDefault();
       const acceptBtn = firstCard.querySelector('[id^="approve-btn-"]');

@@ -500,7 +500,7 @@
       </span>
     </h2>
     <a href="/approvals" class="text-sm text-teal-600 hover:text-teal-700 font-medium flex items-center">
-      View All
+      View All Decisions
       <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
       </svg>
@@ -514,7 +514,7 @@
         <span class="font-bold text-teal-900">Owner Mode:</span> Your AI GM has analyzed the latest data and prepared {{ pending_recs|length }} recommendation{{ 's' if pending_recs|length != 1 else '' }} for your approval.
         <span class="text-slate-500">• Review each decision or use keyboard shortcuts (A/D).</span>
       </p>
-      
+
       {% if pending_recs|length > 1 %}
       <div class="flex gap-2 ml-4">
         <button
@@ -538,7 +538,7 @@
   {% if pending_recs|length > 3 %}
   <div class="mt-4 text-center">
     <a href="/approvals" class="inline-flex items-center px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-300 hover:border-slate-400 rounded-lg font-semibold transition shadow-sm">
-      View {{ pending_recs|length - 3 }} More Recommendation{{ 's' if pending_recs|length - 3 != 1 else '' }}
+      View {{ pending_recs|length - 3 }} More Decision{{ 's' if pending_recs|length - 3 != 1 else '' }}
       <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
       </svg>
