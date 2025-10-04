@@ -8,10 +8,10 @@ def test_dome_stadiums_return_perfect_conditions():
     """Dome stadiums should always return ideal weather."""
     api = WeatherAPI()
     game_time = datetime(2024, 10, 10, 13, 0, tzinfo=timezone.utc)
-    
+
     # Test a dome stadium (Detroit)
     weather = api.get_game_weather("DET", "GB", game_time)
-    
+
     assert weather.is_dome is True
     assert weather.temperature_f == 72.0
     assert weather.wind_speed_mph == 0.0
@@ -23,10 +23,10 @@ def test_weather_cache_roundtrip():
     """Weather cache should store and retrieve data."""
     from app.weather import WeatherCache
     import tempfile
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         cache = WeatherCache(cache_dir=tmpdir)
-        
+
         items = [
             {
                 "home_team": "GB",
@@ -39,10 +39,10 @@ def test_weather_cache_roundtrip():
                 "weather_impact": "neutral"
             }
         ]
-        
+
         cache.set(week=5, season=2024, items=items)
         retrieved = cache.get(week=5, season=2024)
-        
+
         assert retrieved is not None
         assert len(retrieved) == 1
         assert retrieved[0]["home_team"] == "GB"
@@ -53,12 +53,12 @@ def test_nfl_stadiums_coverage():
     """Ensure all 32 NFL teams have stadium data."""
     # Should have 32 teams (note: LAR and LAC share SoFi)
     assert len(NFL_STADIUMS) >= 32
-    
+
     # Check some key teams
     assert "GB" in NFL_STADIUMS
     assert "DET" in NFL_STADIUMS
     assert "DAL" in NFL_STADIUMS
-    
+
     # Check structure
     det = NFL_STADIUMS["DET"]
     assert "name" in det
@@ -81,7 +81,7 @@ def test_weather_impact_description():
         weather_impact="good"
     )
     assert "Good conditions" in good_weather.get_impact_description()
-    
+
     # Bad conditions
     bad_weather = WeatherCondition(
         home_team="BUF",
@@ -94,7 +94,7 @@ def test_weather_impact_description():
     )
     desc = bad_weather.get_impact_description()
     assert "wind" in desc.lower() or "rain" in desc.lower() or "cold" in desc.lower()
-    
+
     # Dome
     dome_weather = WeatherCondition(
         home_team="DET",

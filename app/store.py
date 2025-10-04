@@ -77,7 +77,7 @@ def migrate() -> None:
                 week INTEGER NOT NULL,
                 status TEXT,
                 slot TEXT,
-                UNIQUE(team_id, player_id, week, slot)
+                UNIQUE(team_id, player_id, week)
             );
             """
         )
@@ -220,8 +220,9 @@ def upsert_roster(*, team_id: str, player_id: str, week: int, status: Optional[s
             """
             INSERT INTO rosters(team_id, player_id, week, status, slot)
             VALUES(?, ?, ?, ?, ?)
-            ON CONFLICT(team_id, player_id, week, slot) DO UPDATE SET
-                status=excluded.status
+            ON CONFLICT(team_id, player_id, week) DO UPDATE SET
+                status=excluded.status,
+                slot=COALESCE(excluded.slot, slot)
             """,
             (team_id, player_id, week, status, slot),
         )

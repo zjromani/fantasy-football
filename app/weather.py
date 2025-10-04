@@ -28,16 +28,16 @@ class WeatherCondition:
     home_team: str
     away_team: str
     game_time: datetime
-    
+
     # Weather data
     temperature_f: Optional[float] = None
     wind_speed_mph: Optional[float] = None
     precipitation_chance: Optional[float] = None  # 0-100
     is_dome: bool = False
-    
+
     # Derived
     weather_impact: str = "neutral"  # good, neutral, bad, severe
-    
+
     def to_dict(self) -> dict:
         return {
             "home_team": self.home_team,
@@ -49,12 +49,12 @@ class WeatherCondition:
             "is_dome": self.is_dome,
             "weather_impact": self.weather_impact,
         }
-    
+
     def get_impact_description(self) -> str:
         """Human-readable weather impact."""
         if self.is_dome:
             return "Dome (perfect conditions)"
-        
+
         issues = []
         if self.wind_speed_mph and self.wind_speed_mph > 15:
             issues.append(f"High winds ({self.wind_speed_mph:.0f} mph)")
@@ -62,7 +62,7 @@ class WeatherCondition:
             issues.append(f"Rain likely ({self.precipitation_chance:.0f}%)")
         if self.temperature_f and self.temperature_f < 25:
             issues.append(f"Very cold ({self.temperature_f:.0f}°F)")
-        
+
         if not issues:
             return "Good conditions"
         return ", ".join(issues)
@@ -70,20 +70,20 @@ class WeatherCondition:
 
 class WeatherCache:
     """Simple file-based cache for weather data."""
-    
+
     def __init__(self, cache_dir: str = ".cache/weather"):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def _cache_key(self, week: int, season: int) -> str:
         return f"week{week}_{season}"
-    
+
     def get(self, week: int, season: int, max_age_hours: int = 6) -> Optional[List[dict]]:
         """Get cached weather if not expired."""
         cache_file = self.cache_dir / f"{self._cache_key(week, season)}.json"
         if not cache_file.exists():
             return None
-        
+
         try:
             data = json.loads(cache_file.read_text())
             cached_at = datetime.fromisoformat(data["cached_at"])
@@ -92,7 +92,7 @@ class WeatherCache:
             return data["items"]
         except Exception:
             return None
-    
+
     def set(self, week: int, season: int, items: List[dict]) -> None:
         """Cache weather data."""
         cache_file = self.cache_dir / f"{self._cache_key(week, season)}.json"
@@ -142,11 +142,11 @@ NFL_STADIUMS = {
 
 class WeatherAPI:
     """Fetch weather data from Open-Meteo API."""
-    
+
     def __init__(self, cache: Optional[WeatherCache] = None):
         self.cache = cache or WeatherCache()
         self.client = httpx.Client(timeout=30.0)
-    
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     def _fetch_forecast(self, lat: float, lon: float, date: datetime) -> dict:
         """Fetch weather forecast for a specific location and date."""
@@ -161,15 +161,15 @@ class WeatherAPI:
             "timezone": "America/New_York",
             "forecast_days": 7,
         }
-        
+
         response = self.client.get(url, params=params)
         response.raise_for_status()
         return response.json()
-    
+
     def get_game_weather(self, home_team: str, away_team: str, game_time: datetime) -> WeatherCondition:
         """Get weather conditions for a specific game."""
         stadium = NFL_STADIUMS.get(home_team)
-        
+
         if not stadium:
             # Unknown team, return neutral
             return WeatherCondition(
@@ -178,7 +178,7 @@ class WeatherAPI:
                 game_time=game_time,
                 weather_impact="neutral"
             )
-        
+
         # Domes have perfect conditions
         if stadium["dome"]:
             return WeatherCondition(
@@ -191,25 +191,25 @@ class WeatherAPI:
                 precipitation_chance=0.0,
                 weather_impact="good"
             )
-        
+
         try:
             # Fetch forecast
             data = self._fetch_forecast(stadium["lat"], stadium["lon"], game_time)
-            
+
             # Find the closest hour to game time
             times = data.get("hourly", {}).get("time", [])
             temps = data.get("hourly", {}).get("temperature_2m", [])
             precip = data.get("hourly", {}).get("precipitation_probability", [])
             winds = data.get("hourly", {}).get("wind_speed_10m", [])
-            
+
             # Find index closest to game time
             game_hour = game_time.strftime("%Y-%m-%dT%H:00")
             idx = times.index(game_hour) if game_hour in times else 0
-            
+
             temperature = temps[idx] if idx < len(temps) else None
             precipitation = precip[idx] if idx < len(precip) else None
             wind = winds[idx] if idx < len(winds) else None
-            
+
             # Determine impact
             impact = "neutral"
             if wind and wind > 20:
@@ -220,7 +220,7 @@ class WeatherAPI:
                 impact = "bad"
             else:
                 impact = "good"
-            
+
             return WeatherCondition(
                 home_team=home_team,
                 away_team=away_team,
@@ -231,7 +231,7 @@ class WeatherAPI:
                 is_dome=False,
                 weather_impact=impact
             )
-        
+
         except Exception as e:
             print(f"[WEATHER] Error fetching weather for {home_team}: {e}")
             # Return neutral on error
@@ -241,14 +241,14 @@ class WeatherAPI:
                 game_time=game_time,
                 weather_impact="neutral"
             )
-    
+
     def get_week_weather(self, week: int, season: int = 2024) -> List[WeatherCondition]:
         """Get weather for all games in a specific week."""
         # Check cache first
         cached = self.cache.get(week, season)
         if cached:
             return [WeatherCondition(**item) for item in cached]
-        
+
         # For now, return empty list - would need NFL schedule API
         # In production, integrate with NFL API or manual schedule
         return []
