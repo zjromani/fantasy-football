@@ -382,14 +382,14 @@
         const tradeSection = document.getElementById('trade-leverage-section');
         const tradeList = document.getElementById('trade-opportunities-list');
         const tradeCount = document.getElementById('trade-leverage-count');
-        
+
         tradeCount.textContent = data.trade_opportunities.length;
         tradeList.innerHTML = '';
-        
+
         data.trade_opportunities.forEach((opp, idx) => {
           const oppEl = document.createElement('div');
           oppEl.className = 'bg-white rounded-lg p-3 border-2 border-purple-200 hover:border-purple-400 transition';
-          
+
           // Leverage score color
           let scoreColor = 'text-purple-700';
           if (opp.leverage_score >= 8) {
@@ -397,7 +397,7 @@
           } else if (opp.leverage_score >= 6) {
             scoreColor = 'text-orange-600 font-bold';
           }
-          
+
           oppEl.innerHTML = `
             <div class="flex items-start justify-between mb-2">
               <div class="flex-1">
@@ -417,7 +417,7 @@
             </div>
             ${opp.complementary_positions && opp.complementary_positions.length > 0 ? `
               <div class="flex flex-wrap gap-1 mt-2">
-                ${opp.complementary_positions.map(pos => 
+                ${opp.complementary_positions.map(pos =>
                   `<span class="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold">${pos}</span>`
                 ).join('')}
               </div>
@@ -425,10 +425,10 @@
           `;
           tradeList.appendChild(oppEl);
         });
-        
+
         tradeSection.classList.remove('hidden');
       }
-      
+
       // Show data, hide loading
       loading.classList.add('hidden');
       dataContainer.classList.remove('hidden');

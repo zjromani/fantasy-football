@@ -59,19 +59,19 @@ class LeagueSnapshot:
     team_health: List[TeamHealth]
     trade_opportunities: List[TradeOpportunity] = None
     my_team_id: Optional[str] = None
-    
+
     @property
     def my_team(self) -> Optional[TeamHealth]:
         """Get current user's team health."""
         if not self.my_team_id:
             return None
         return next((t for t in self.team_health if t.team_id == self.my_team_id), None)
-    
+
     @property
     def strongest_teams(self) -> List[TeamHealth]:
         """Top 3 strongest teams by power index."""
         return sorted(self.team_health, key=lambda t: t.power_index, reverse=True)[:3]
-    
+
     @property
     def weakest_teams(self) -> List[TeamHealth]:
         """Bottom 3 weakest teams (trade targets)."""
@@ -258,26 +258,19 @@ def calculate_team_power(
             if p[4] and current_week <= p[4] <= current_week + 1  # Bye this/next week
         )
 
-        # Get team record from matchups
+        # Get team record from teams table (populated from Yahoo standings)
         cur.execute("""
-            SELECT
-                SUM(CASE WHEN result = 'W' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result = 'L' THEN 1 ELSE 0 END) as losses,
-                SUM(COALESCE(actual, 0)) as points_for,
-                SUM(COALESCE(
-                    (SELECT actual FROM matchups WHERE team_id = ? AND week = m.week),
-                    0
-                )) as points_against
-            FROM matchups m
-            WHERE team_id = ? AND week < ?
-        """, (team_id, team_id, current_week))
+            SELECT wins, losses, points_for, points_against
+            FROM teams
+            WHERE id = ?
+        """, (team_id,))
         
         record_row = cur.fetchone()
-        wins = int(record_row[0] or 0)
-        losses = int(record_row[1] or 0)
-        points_for = float(record_row[2] or 0.0)
-        points_against = float(record_row[3] or 0.0)
-        
+        wins = int(record_row[0] or 0) if record_row else 0
+        losses = int(record_row[1] or 0) if record_row else 0
+        points_for = float(record_row[2] or 0.0) if record_row else 0.0
+        points_against = float(record_row[3] or 0.0) if record_row else 0.0
+
         # Calculate win percentage
         total_games = wins + losses
         win_pct = wins / total_games if total_games > 0 else 0.5
@@ -291,7 +284,7 @@ def calculate_team_power(
         injury_penalty = injury_count + (bye_exposure * 0.5)
 
         power_index = projected_points + (depth_quality * 10) - (injury_penalty * 2)
-        
+
         # Calculate desperation score (0-10 scale, higher = more desperate)
         # Factors: losing record, injuries, bye exposure, power index gap
         desperation = 0.0
@@ -299,10 +292,10 @@ def calculate_team_power(
             desperation += 4.0
         elif win_pct < 0.5:
             desperation += 2.0
-        
+
         desperation += min(injury_count * 0.5, 2.0)  # Injuries (max +2)
         desperation += min(bye_exposure * 0.3, 1.5)  # Bye exposure (max +1.5)
-        
+
         # Low power index = more desperate
         if power_index < 100:
             desperation += 2.5
@@ -336,75 +329,75 @@ def find_trade_opportunities(
 ) -> List[TradeOpportunity]:
     """
     Identify high-leverage trade targets based on desperation and complementary needs.
-    
+
     Args:
         my_team: User's team health
         all_teams: All teams in the league
         top_n: Number of opportunities to return
-    
+
     Returns:
         List of TradeOpportunity sorted by leverage_score (highest first)
     """
     opportunities = []
-    
+
     # Identify my strengths (A/B grades) and weaknesses (D/F grades)
     my_strengths = [pos for pos, grade in my_team.positional_grades.items() if grade.grade in ["A", "B"]]
     my_weaknesses = [pos for pos, grade in my_team.positional_grades.items() if grade.grade in ["D", "F"]]
-    
+
     for team in all_teams:
         if team.team_id == my_team.team_id:
             continue
-        
+
         # Identify their weaknesses (what I can exploit)
         their_weaknesses = [pos for pos, grade in team.positional_grades.items() if grade.grade in ["D", "F"]]
         their_strengths = [pos for pos, grade in team.positional_grades.items() if grade.grade in ["A", "B"]]
-        
+
         # Find complementary positions (my strength = their weakness AND vice versa)
         complementary = []
-        
+
         # What I can give them (my strength = their weakness)
         my_surplus = [pos for pos in my_strengths if pos in their_weaknesses]
-        
+
         # What they can give me (their strength = my weakness)
         their_surplus = [pos for pos in their_strengths if pos in my_weaknesses]
-        
+
         if not my_surplus and not their_surplus:
             continue  # No natural fit
-        
+
         complementary = my_surplus + their_surplus
-        
+
         # Calculate leverage score
         # Higher desperation + more complementary needs = better target
         leverage = team.desperation_score  # Base: 0-10
         leverage += len(complementary) * 1.5  # +1.5 per complementary position
-        
+
         # Bonus for losing record (more motivated to trade)
         if team.wins < team.losses:
             leverage += 2.0
-        
+
         # Penalty for very strong teams (less likely to trade)
         if team.rank <= 3:
             leverage -= 2.0
-        
+
         # Build human-readable reason
         reasons = []
-        
+
         if team.desperation_score >= 5.0:
             reasons.append(f"{team.wins}-{team.losses} record, desperate for wins")
         elif team.wins < team.losses:
             reasons.append(f"losing record ({team.wins}-{team.losses})")
-        
+
         if team.injury_count >= 2:
             reasons.append(f"{team.injury_count} injuries")
-        
+
         if my_surplus:
             reasons.append(f"weak at {', '.join(my_surplus)} (you're strong there)")
-        
+
         if their_surplus:
             reasons.append(f"strong at {', '.join(their_surplus)} (you need help)")
-        
+
         reason = "; ".join(reasons) if reasons else "Moderate trade fit"
-        
+
         opportunities.append(TradeOpportunity(
             team_id=team.team_id,
             team_name=team.team_name,
@@ -414,7 +407,7 @@ def find_trade_opportunities(
             reason=reason.capitalize(),
             complementary_positions=complementary
         ))
-    
+
     # Sort by leverage_score (highest first) and return top N
     return sorted(opportunities, key=lambda o: o.leverage_score, reverse=True)[:top_n]
 

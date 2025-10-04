@@ -444,9 +444,93 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                         team_b = _flatten_yahoo_list(team_b_list)
                         a_id = str(team_a.get("team_id") or team_a.get("team_key") or "")
                         b_id = str(team_b.get("team_id") or team_b.get("team_key") or "")
+                        
+                        # Extract scores and results
+                        a_projected = team_a.get("team_projected_points", {}).get("total") if isinstance(team_a.get("team_projected_points"), dict) else None
+                        a_actual = team_a.get("team_points", {}).get("total") if isinstance(team_a.get("team_points"), dict) else None
+                        b_projected = team_b.get("team_projected_points", {}).get("total") if isinstance(team_b.get("team_projected_points"), dict) else None
+                        b_actual = team_b.get("team_points", {}).get("total") if isinstance(team_b.get("team_points"), dict) else None
+                        
+                        # Determine result if scores are available
+                        a_result = None
+                        b_result = None
+                        if a_actual is not None and b_actual is not None:
+                            try:
+                                a_score = float(a_actual)
+                                b_score = float(b_actual)
+                                if a_score > b_score:
+                                    a_result = "W"
+                                    b_result = "L"
+                                elif b_score > a_score:
+                                    a_result = "L"
+                                    b_result = "W"
+                                else:
+                                    a_result = "T"
+                                    b_result = "T"
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Convert to float if present
+                        try:
+                            a_projected = float(a_projected) if a_projected is not None else None
+                            a_actual = float(a_actual) if a_actual is not None else None
+                            b_projected = float(b_projected) if b_projected is not None else None
+                            b_actual = float(b_actual) if b_actual is not None else None
+                        except (ValueError, TypeError):
+                            pass
+                        
                         if week and a_id and b_id:
-                            upsert_matchup(week=week, team_id=a_id, opponent_id=b_id, projected=None, actual=None, result=None)
-                            upsert_matchup(week=week, team_id=b_id, opponent_id=a_id, projected=None, actual=None, result=None)
+                            upsert_matchup(week=week, team_id=a_id, opponent_id=b_id, projected=a_projected, actual=a_actual, result=a_result)
+                            upsert_matchup(week=week, team_id=b_id, opponent_id=a_id, projected=b_projected, actual=b_actual, result=b_result)
+
+    # Standings - extract cumulative win/loss records
+    standings_data = bundle.get("standings")
+    if isinstance(standings_data, dict):
+        try:
+            fc = standings_data.get("fantasy_content", {})
+            league = fc.get("league", [])
+            if isinstance(league, list) and len(league) >= 2:
+                standings_obj = league[1].get("standings", [])
+                if isinstance(standings_obj, list) and len(standings_obj) > 0:
+                    teams_obj = standings_obj[0].get("teams", {})
+                    for team_wrap in _extract_items(teams_obj):
+                        team_list = team_wrap.get("team") if isinstance(team_wrap, dict) else None
+                        if not isinstance(team_list, list):
+                            continue
+                        
+                        team = _flatten_yahoo_list(team_list)
+                        team_id = str(team.get("team_id") or "")
+                        
+                        # Extract standings data
+                        standings_info = team.get("team_standings", {})
+                        if isinstance(standings_info, dict) and team_id:
+                            outcome = standings_info.get("outcome_totals", {})
+                            if isinstance(outcome, dict):
+                                try:
+                                    wins = int(outcome.get("wins", 0))
+                                    losses = int(outcome.get("losses", 0))
+                                    points_for = float(standings_info.get("points_for", 0.0))
+                                    points_against = float(standings_info.get("points_against", 0.0))
+                                    
+                                    # Update team standings in database
+                                    from .store import upsert_team
+                                    team_name = str(team.get("name", ""))
+                                    manager = str(team.get("managers", [{}])[0].get("manager", {}).get("nickname", "")) if team.get("managers") else None
+                                    
+                                    upsert_team(
+                                        team_id=team_id,
+                                        name=team_name,
+                                        manager=manager,
+                                        wins=wins,
+                                        losses=losses,
+                                        points_for=points_for,
+                                        points_against=points_against
+                                    )
+                                    print(f"[STANDINGS] Updated team {team_id}: {wins}-{losses}, PF: {points_for:.2f}, PA: {points_against:.2f}")
+                                except (ValueError, TypeError) as e:
+                                    print(f"[STANDINGS] Warning: Could not parse standings for team {team_id}: {e}")
+        except Exception as e:
+            print(f"[INGEST] Warning: Could not process standings: {e}")
 
     # Transactions
     txs = bundle.get("transactions")

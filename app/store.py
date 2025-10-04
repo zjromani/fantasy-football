@@ -64,10 +64,26 @@ def migrate() -> None:
                 name TEXT,
                 manager TEXT,
                 abbrev TEXT,
+                wins INTEGER DEFAULT 0,
+                losses INTEGER DEFAULT 0,
+                points_for REAL DEFAULT 0.0,
+                points_against REAL DEFAULT 0.0,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             """
         )
+        
+        # Migration: Add wins/losses columns if they don't exist
+        # Check if columns exist and add them
+        try:
+            c.execute("SELECT wins FROM teams LIMIT 1")
+        except:
+            c.execute("ALTER TABLE teams ADD COLUMN wins INTEGER DEFAULT 0")
+            c.execute("ALTER TABLE teams ADD COLUMN losses INTEGER DEFAULT 0")
+            c.execute("ALTER TABLE teams ADD COLUMN points_for REAL DEFAULT 0.0")
+            c.execute("ALTER TABLE teams ADD COLUMN points_against REAL DEFAULT 0.0")
+            connection.commit()
+            print("[MIGRATE] Added wins/losses/points columns to teams table")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS rosters (
@@ -191,21 +207,25 @@ def upsert_player(*, player_id: str, name: str, position: Optional[str] = None, 
         connection.close()
 
 
-def upsert_team(*, team_id: str, name: str, manager: Optional[str] = None, abbrev: Optional[str] = None) -> None:
+def upsert_team(*, team_id: str, name: str, manager: Optional[str] = None, abbrev: Optional[str] = None, wins: Optional[int] = None, losses: Optional[int] = None, points_for: Optional[float] = None, points_against: Optional[float] = None) -> None:
     connection = get_connection()
     try:
         c = connection.cursor()
         c.execute(
             """
-            INSERT INTO teams(id, name, manager, abbrev)
-            VALUES(?, ?, ?, ?)
+            INSERT INTO teams(id, name, manager, abbrev, wins, losses, points_for, points_against)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,
-                manager=excluded.manager,
-                abbrev=excluded.abbrev,
+                manager=COALESCE(excluded.manager, manager),
+                abbrev=COALESCE(excluded.abbrev, abbrev),
+                wins=COALESCE(excluded.wins, wins),
+                losses=COALESCE(excluded.losses, losses),
+                points_for=COALESCE(excluded.points_for, points_for),
+                points_against=COALESCE(excluded.points_against, points_against),
                 updated_at=datetime('now')
             """,
-            (team_id, name, manager, abbrev),
+            (team_id, name, manager, abbrev, wins, losses, points_for, points_against),
         )
         connection.commit()
     finally:
