@@ -95,6 +95,36 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
 def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
     """Generate AI-powered GM brief using OpenAI."""
     context = _get_league_context(settings)
+    
+    # Run lineup optimizer to get sit/start recommendations
+    lineup_recommendations = []
+    try:
+        from .lineup_actions import get_roster_for_optimization
+        from .lineup_enhanced import optimize_lineup_enhanced
+        
+        current_week = context.get('current_week', 1)
+        roster = get_roster_for_optimization(current_week)
+        
+        if roster:
+            recs = optimize_lineup_enhanced(
+                settings=settings,
+                roster_players=roster,
+                week=current_week,
+                min_confidence=60.0  # Lower threshold for GM Brief
+            )
+            
+            # Format for AI context
+            for rec in recs[:3]:  # Top 3 recommendations
+                lineup_recommendations.append({
+                    "action": f"Start {rec.player_in.name} over {rec.player_out.name}",
+                    "position": rec.player_in.position,
+                    "delta": f"+{rec.projection_delta:.1f} pts",
+                    "confidence": f"{rec.confidence:.0f}%",
+                    "reasons": rec.reasons[:2],  # Top 2 reasons
+                })
+    except Exception as e:
+        print(f"[GM BRIEF] Could not generate lineup recommendations: {e}")
+        # Continue without lineup recs
 
     try:
         # Check if OpenAI is configured
@@ -141,6 +171,14 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
             roster_detail.append(player_info)
 
         # Build prompt for OpenAI
+        lineup_recs_text = ""
+        if lineup_recommendations:
+            lineup_recs_text = f"\n\nLINEUP OPTIMIZER RECOMMENDATIONS ({len(lineup_recommendations)} suggestions):\n"
+            lineup_recs_text += _json.dumps(lineup_recommendations, indent=2)
+            lineup_recs_text += "\nNote: These are AI-generated sit/start recommendations based on projections, news, weather, and injury risk."
+        else:
+            lineup_recs_text = "\n\nLINEUP OPTIMIZER: Your current lineup appears optimal. No changes recommended."
+        
         prompt = f"""You are an expert fantasy football advisor for NFL Week {context.get('current_week', '?')}.
 Generate a concise, actionable GM brief for the user's fantasy team.
 
@@ -152,6 +190,7 @@ LEAGUE SETTINGS:
 YOUR CURRENT ROSTER ({len(roster_detail)} players):
 {_json.dumps(roster_detail, indent=2)}
 Note: projected_pts shown where available (may be None if projections not configured)
+{lineup_recs_text}
 
 LATEST NFL NEWS (use this for injury/status updates):
 {chr(10).join(news_summary)}
@@ -172,19 +211,20 @@ IMPORTANT INSTRUCTIONS:
 - Only recommend players who are actually available as free agents (not already on any roster)
 - Cross-reference news with roster players by name AND team to ensure accuracy
 - Check recent transactions to see which players were recently picked up/dropped
-- Be specific about WHICH players from the user's roster to start/sit (use exact names)
+- LEVERAGE the LINEUP OPTIMIZER RECOMMENDATIONS above - these are data-driven sit/start suggestions
+- If optimizer suggests changes, incorporate them into your Lineup section with additional context
 - Provide FAAB bid ranges (e.g., $5-8) for waiver recommendations based on league budget
 - Focus on THIS week's matchups and decisions
 - If a player is on bye this week (check bye_week field), flag it prominently
 
 Generate a brief with these sections:
 1. **🎯 Actions** (3-4 items): Immediate action items for this week
-2. **👥 Lineup** (2-3 items): Specific sit/start advice from YOUR ROSTER above
+2. **👥 Lineup** (2-3 items): Start with LINEUP OPTIMIZER suggestions (if any), add your analysis
 3. **➕ Waivers** (Top 3-5): Available free agents to target with FAAB ranges
 4. **🔄 Trades** (1-2 items): Trade opportunities based on team needs
 5. **⚡ Key Insights**: Injury alerts and important news affecting your players
 
-Format as markdown. Be concise but specific."""
+Format as markdown. Be concise but specific. If lineup optimizer found recommendations, highlight them clearly."""
 
         # Call OpenAI
         response = ask(

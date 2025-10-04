@@ -14,7 +14,7 @@ from app.db import migrate, get_connection
 def test_format_recommendations_empty():
     """Empty recommendations should return 'optimal' message."""
     title, body, payload = format_recommendations_for_inbox([], week=5)
-    
+
     assert "Week 5" in title
     assert "optimal" in body.lower()
     assert payload["recommendations"] == []
@@ -40,9 +40,9 @@ def test_format_recommendations_with_suggestions():
         ],
         warnings=["Monitor injury report"]
     )
-    
+
     title, body, payload = format_recommendations_for_inbox([rec], week=5)
-    
+
     assert "Week 5" in title
     assert "1 suggestion" in title
     assert "Cooper Kupp" in body
@@ -52,7 +52,7 @@ def test_format_recommendations_with_suggestions():
     assert "Reasons:" in body
     assert "Warnings:" in body
     assert "Monitor injury report" in body
-    
+
     # Check payload
     assert payload["recommendation_count"] == 1
     assert payload["recommendations"][0]["player_in"] == "Cooper Kupp"
@@ -86,9 +86,9 @@ def test_format_multiple_recommendations():
             warnings=[]
         ),
     ]
-    
+
     title, body, payload = format_recommendations_for_inbox(recs, week=5)
-    
+
     assert "2 suggestions" in title
     assert "1. Start Player A over Player B" in body
     assert "2. Start Player C over Player D" in body
@@ -99,15 +99,15 @@ def test_optimize_and_post_integration():
     """Full integration test with database."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
-    
+
     try:
         # Set up test database
         os.environ["DATABASE_PATH"] = db_path
         migrate()
-        
+
         conn = get_connection()
         cur = conn.cursor()
-        
+
         # Insert test data
         cur.execute("INSERT OR IGNORE INTO players (id, name, position, team) VALUES (?, ?, ?, ?)",
                     ("p1", "Test QB", "QB", "KC"))
@@ -115,23 +115,23 @@ def test_optimize_and_post_integration():
                     ("p2", "Test RB", "RB", "BUF"))
         cur.execute("INSERT OR IGNORE INTO teams (id, name, manager) VALUES (?, ?, ?)",
                     ("t1", "Test Team", "Manager"))
-        
+
         # Insert roster
         cur.execute("INSERT OR REPLACE INTO rosters (team_id, player_id, week, slot, status) VALUES (?, ?, ?, ?, ?)",
                     ("t1", "p1", 5, "QB", None))
         cur.execute("INSERT OR REPLACE INTO rosters (team_id, player_id, week, slot, status) VALUES (?, ?, ?, ?, ?)",
                     ("t1", "p2", 5, "BN", None))
-        
+
         # Insert matchup to set current week
         cur.execute("INSERT INTO matchups (week, team_id, opponent_id) VALUES (?, ?, ?)",
                     (5, "t1", "t2"))
-        
+
         conn.commit()
         conn.close()
-        
+
         # Set team key
         os.environ["YAHOO_TEAM_KEY"] = "nfl.l.12345.t.t1"
-        
+
         # Create settings
         settings = LeagueSettings(
             roster_slots={"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1, "BENCH": 6},
@@ -139,25 +139,25 @@ def test_optimize_and_post_integration():
             scoring=ScoringRules(ppr=1.0, pass_td=4, rush_td=6, rec_td=6),
             bench_size=6,
         )
-        
+
         # Run optimizer (will likely find no recommendations with test data)
         msg_id = optimize_and_post_to_inbox(settings, week=5, min_confidence=50.0)
-        
+
         # Should return a message ID
         assert msg_id is not None
         assert isinstance(msg_id, int)
-        
+
         # Check notification was created
         conn = get_connection()
         cur = conn.cursor()
         cur.execute("SELECT title, kind FROM notifications WHERE id = ?", (msg_id,))
         result = cur.fetchone()
         conn.close()
-        
+
         assert result is not None
         assert "Lineup Optimizer" in result[0]
         assert result[1] == "lineup"
-        
+
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)

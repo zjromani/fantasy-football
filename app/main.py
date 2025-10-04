@@ -229,14 +229,14 @@ def action_optimize_lineup():
     if not payload:
         notify("info", "No settings", "Run 'Sync Yahoo Data' first to load league data.", {})
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-    
+
     try:
         raw = {"settings": payload}
         settings = LeagueSettings.from_yahoo(raw)
-        
+
         from .lineup_actions import run_lineup_optimizer_action
         msg_id = run_lineup_optimizer_action(settings)
-        
+
         if msg_id:
             return RedirectResponse(url=f"/notifications/{msg_id}", status_code=status.HTTP_303_SEE_OTHER)
         else:
