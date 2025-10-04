@@ -1,7 +1,7 @@
 <!-- Action Card: Owner decision surface for GM recommendations -->
-<!-- TODO: Add projected delta badge (e.g., "+2.4 pts") prominently on each card -->
-<!-- TODO: Add data freshness indicator (e.g., "Projections • 4h old") -->
-<!-- TODO: Add keyboard shortcuts (A = Accept, D = Deny) -->
+<!-- Keyboard shortcuts: A = Accept first card, D = Decline first card -->
+<!-- TODO: Add projected delta badge (e.g., "+2.4 pts") - needs backend to calculate -->
+<!-- TODO: Add data freshness indicator (e.g., "Projections • 4h old") - needs backend timestamp -->
 <!-- TODO: Add optimistic UI with Undo toast after approval -->
 
 {% macro render_action_card(rec) %}
@@ -225,15 +225,28 @@
 </div>
 
 <script>
-  // TODO: Implement keyboard shortcuts for Accept (A) and Decline (D)
-  // document.addEventListener('keydown', (e) => {
-  //   if (e.key === 'a' && !e.target.matches('input, textarea')) {
-  //     // Find first visible Accept button and click it
-  //   }
-  //   if (e.key === 'd' && !e.target.matches('input, textarea')) {
-  //     // Find first visible Decline button and click it
-  //   }
-  // });
+  // Keyboard shortcuts: A = Accept first visible card, D = Decline first visible card
+  document.addEventListener('keydown', (e) => {
+    // Skip if user is typing in an input field
+    if (e.target.matches('input, textarea, select')) return;
+    
+    const firstCard = document.querySelector('.action-card:not([style*="opacity: 0"])');
+    if (!firstCard) return;
+    
+    if (e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      const acceptBtn = firstCard.querySelector('[id^="approve-btn-"]');
+      if (acceptBtn && !acceptBtn.disabled) {
+        acceptBtn.click();
+      }
+    } else if (e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      const declineBtn = firstCard.querySelector('[id^="deny-btn-"]');
+      if (declineBtn && !declineBtn.disabled) {
+        declineBtn.click();
+      }
+    }
+  });
 
   function toggleDetails(id) {
     const details = document.getElementById(id + '-details');

@@ -191,6 +191,63 @@
       }
     }
   }
+
+  // Batch accept all visible recommendations
+  async function acceptAllRecommendations() {
+    const acceptAllBtn = document.getElementById('accept-all-btn');
+    if (!acceptAllBtn) return;
+
+    const allCards = document.querySelectorAll('.action-card:not([style*="opacity: 0"])');
+    if (allCards.length === 0) return;
+
+    // Disable button and show loading state
+    acceptAllBtn.disabled = true;
+    acceptAllBtn.textContent = `Accepting ${allCards.length}...`;
+
+    let successCount = 0;
+    const errors = [];
+
+    // Process each card sequentially
+    for (const card of allCards) {
+      const approveBtn = card.querySelector('[id^="approve-btn-"]');
+      if (approveBtn && !approveBtn.disabled) {
+        const recId = approveBtn.id.match(/approve-btn-(\d+)/)?.[1];
+        if (recId) {
+          try {
+            const response = await fetch(`/approvals/${recId}/approve`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
+            if (response.ok) {
+              successCount++;
+              // Hide card
+              card.style.opacity = '0';
+              card.style.transform = 'translateX(-20px)';
+            } else {
+              errors.push(`Recommendation ${recId} failed`);
+            }
+          } catch (error) {
+            errors.push(`Recommendation ${recId} error`);
+          }
+        }
+      }
+    }
+
+    // Show result toast
+    if (successCount === allCards.length) {
+      // All succeeded - reload to show empty state
+      setTimeout(() => window.location.reload(), 500);
+    } else if (successCount > 0) {
+      // Partial success
+      alert(`Accepted ${successCount} of ${allCards.length} recommendations. ${errors.length} failed.`);
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      // All failed
+      alert('Failed to accept recommendations. Please try again.');
+      acceptAllBtn.disabled = false;
+      acceptAllBtn.textContent = `Accept All (${allCards.length})`;
+    }
+  }
 </script>
 
 <!-- League Settings Banner -->
@@ -392,38 +449,28 @@
 </div>
 {% endif %}
 
-<!-- Filters & Actions -->
+<!-- Filter Inbox & Activity -->
 <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-6 slide-in">
-  <div class="flex flex-wrap items-center justify-between gap-4">
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-sm font-medium text-slate-600 mr-2">Filter:</span>
-      <a href="/" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if not filter_kind %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
-        All
-      </a>
-      <a href="/?kind=brief" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='brief' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
-        📊 Brief
-      </a>
-      <a href="/?kind=lineup" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='lineup' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
-        👥 Lineup
-      </a>
-      <a href="/?kind=waivers" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='waivers' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
-        ➕ Waivers
-      </a>
-      <a href="/?kind=trades" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='trades' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
-        🔄 Trades
-      </a>
-      <a href="/?kind=info" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='info' %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
-        ℹ️ Info
-      </a>
-    </div>
-    <form method="post" action="/actions/notifications/mark_all_read">
-      <button type="submit" class="text-slate-600 hover:text-slate-900 text-sm font-medium flex items-center transition">
-        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-        </svg>
-        Mark all read
-      </button>
-    </form>
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="text-sm font-medium text-slate-600 mr-2">Show:</span>
+    <a href="/" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if not filter_kind %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+      All
+    </a>
+    <a href="/?kind=brief" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='brief' %}bg-blue-600 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+      Briefs
+    </a>
+    <a href="/?kind=lineup" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='lineup' %}bg-orange-600 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+      Lineup
+    </a>
+    <a href="/?kind=waivers" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='waivers' %}bg-green-600 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+      Waivers
+    </a>
+    <a href="/?kind=trades" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='trades' %}bg-purple-600 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+      Trades
+    </a>
+    <a href="/?kind=info" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind=='info' %}bg-slate-600 text-white{% else %}text-slate-600 hover:bg-slate-100{% endif %}">
+      Info
+    </a>
   </div>
 </div>
 
@@ -432,10 +479,11 @@
      ======================================== -->
 
 <!-- TODO: Add Command Palette (⌘K) - global actions for "optimize lineup", "scan waivers", "scout opponent" -->
-<!-- TODO: Add batch actions - "Apply all lineup changes (X)" with Undo -->
 <!-- TODO: Add Player Drawer - click any player → slide-over with news, projections, trade value -->
 <!-- TODO: Add Auto-Loop toggles - "Auto Lineup Check (Thu AM)", "Auto Waiver Scan (Tue)" -->
 <!-- TODO: Add Weekly Cadence Banner - "Tue: Waivers; Thu: Lineup; Sun: Inactives; Mon: Review" with auto toggles -->
+<!-- TODO: Add data freshness badges - show "Projections • 4h old" when stale (backend needs to provide timestamp) -->
+<!-- TODO: Add projected delta badges - show "+2.4 pts" on each card (backend needs to calculate) -->
 
 <!-- Owner Inbox: Prioritized Decisions from Your GM -->
 {% import 'components/action_card.html' as action_card %}
@@ -461,10 +509,24 @@
 
   <!-- Owner Mode Description -->
   <div class="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-lg px-4 py-3 mb-4">
-    <p class="text-sm text-slate-700">
-      <span class="font-bold text-teal-900">Owner Mode:</span> Your AI GM has analyzed the latest data and prepared {{ pending_recs|length }} recommendation{{ 's' if pending_recs|length != 1 else '' }} for your approval.
-      <span class="text-slate-500">• Approve, decline, or modify each decision below.</span>
-    </p>
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-slate-700 flex-1">
+        <span class="font-bold text-teal-900">Owner Mode:</span> Your AI GM has analyzed the latest data and prepared {{ pending_recs|length }} recommendation{{ 's' if pending_recs|length != 1 else '' }} for your approval.
+        <span class="text-slate-500">• Review each decision or use keyboard shortcuts (A/D).</span>
+      </p>
+      
+      {% if pending_recs|length > 1 %}
+      <div class="flex gap-2 ml-4">
+        <button
+          onclick="acceptAllRecommendations()"
+          class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-semibold transition shadow-sm"
+          id="accept-all-btn"
+        >
+          Accept All ({{ pending_recs|length }})
+        </button>
+      </div>
+      {% endif %}
+    </div>
   </div>
 
   <div class="space-y-4">
@@ -501,21 +563,15 @@
       {% endif %}
     </h2>
 
-    <!-- Filter Tabs -->
-    <div class="flex items-center gap-2">
-      <a href="/" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if not filter_kind %}bg-slate-900 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
-        All
-      </a>
-      <a href="/?kind=brief" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind == 'brief' %}bg-blue-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
-        Briefs
-      </a>
-      <a href="/?kind=waivers" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind == 'waivers' %}bg-green-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
-        Waivers
-      </a>
-      <a href="/?kind=lineup" class="px-3 py-1.5 rounded-lg text-sm font-medium transition {% if filter_kind == 'lineup' %}bg-orange-600 text-white{% else %}bg-white text-slate-600 hover:bg-slate-50 border border-slate-200{% endif %}">
-        Lineup
-      </a>
-    </div>
+    <!-- Mark all read -->
+    <form method="post" action="/actions/notifications/mark_all_read">
+      <button type="submit" class="text-slate-600 hover:text-slate-900 text-sm font-medium flex items-center transition">
+        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        Mark all read
+      </button>
+    </form>
   </div>
 
   <!-- Feed Items -->

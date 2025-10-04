@@ -45,13 +45,26 @@ This document outlines the surgical UX changes made to transform the Fantasy Foo
 
 **Impact:** Better for screen readers and keyboard navigation
 
-### 6. **TODO Markers for Next Phase**
+### 6. **Keyboard Shortcuts**
+- **Added:** Press `A` to accept first visible recommendation
+- **Added:** Press `D` to decline first visible recommendation
+- **Smart:** Skips when typing in input fields, only works on visible cards
+
+**Impact:** Power users can process decisions at keyboard speed
+
+### 7. **Batch Actions**
+- **Added:** "Accept All (X)" button when multiple recommendations present
+- **Sequential processing:** Accepts each recommendation one by one
+- **Feedback:** Shows progress and handles partial failures gracefully
+
+**Impact:** One-click to accept all GM recommendations when confident
+
+### 8. **TODO Markers for Next Phase**
 - Command Palette (⌘K)
-- Batch actions ("Apply all lineup changes (3)")
 - Player Drawer (slide-over with news/projections)
 - Auto-Loop toggles (scheduled auto-runs)
-- Data freshness badges
-- Projected delta badges (+2.4 pts)
+- Data freshness badges (needs backend timestamp)
+- Projected delta badges (needs backend calculation)
 - Weekly cadence banner
 
 **Impact:** Clear roadmap for full Owner Mode experience
