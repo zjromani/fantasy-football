@@ -399,6 +399,7 @@ def action_waivers_demo():
 
 @app.post("/actions/waivers_live")
 def action_waivers_live(league_key: str = Form(None)):
+    """Enhanced waiver analysis with real projections and drop candidates."""
     if not league_key:
         league_key = get_settings().league_key
     league_key = normalize_league_key(league_key)
@@ -411,15 +412,35 @@ def action_waivers_live(league_key: str = Form(None)):
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     raw = {"settings": payload}
     settings = LeagueSettings.from_yahoo(raw)
+    
     try:
-        client = YahooClient()
-        fa = free_agents_from_yahoo(client, league_key)
-        # Rough starter counts; future: compute from roster data
-        current = {"RB": settings.positional_limits.rb, "WR": settings.positional_limits.wr, "QB": settings.positional_limits.qb, "TE": settings.positional_limits.te}
-        recs, msg_id = recommend_waivers(settings=settings, current_starters_count=current, free_agents=fa, faab_remaining=100 if settings.faab_budget else 0, waiver_type="faab", top_n=5)
+        # Get current week
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT MAX(week) FROM matchups")
+            result = cur.fetchone()
+            current_week = result[0] if result and result[0] else 1
+        finally:
+            conn.close()
+        
+        # Use enhanced waiver analysis
+        from .waivers_enhanced import analyze_waivers_enhanced, post_enhanced_waivers_to_inbox
+        
+        recommendations = analyze_waivers_enhanced(
+            settings=settings,
+            week=current_week,
+            max_players=75,
+            top_n=5
+        )
+        
+        msg_id = post_enhanced_waivers_to_inbox(recommendations, current_week)
+        
         return RedirectResponse(url=f"/notifications/{msg_id}" if msg_id else "/", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as err:
-        notify("info", "Waivers live error", f"{err}", {"league_key": league_key})
+        notify("info", "Waivers error", f"{err}", {"league_key": league_key})
+        import traceback
+        traceback.print_exc()
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
