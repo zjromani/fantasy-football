@@ -125,7 +125,7 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
                 "slot": p.get('slot'),
                 "status": p.get('status') or "Active"
             }
-            
+
             # Add projection if available
             if p.get('name') and p.get('position'):
                 proj = get_player_projection(p['name'], current_week, p['position'])
@@ -137,7 +137,7 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
                         player_info["projected_pts"] = proj.fantasy_points_half_ppr
                     else:
                         player_info["projected_pts"] = proj.fantasy_points_standard
-            
+
             roster_detail.append(player_info)
 
         # Build prompt for OpenAI

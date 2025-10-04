@@ -21,6 +21,7 @@ from .config import get_settings
 from .utils import normalize_league_key
 from .news import fetch_all_news
 from .projections import get_projections
+from .scouting import post_scouting_report, get_next_opponent
 
 
 @asynccontextmanager
@@ -69,6 +70,24 @@ def list_notifications(request: Request, kind: Optional[str] = None):
     rows = inbox_list(kind)
     settings_payload = latest_settings_payload() or {}
     pending_count = count_pending_recommendations()
+    
+    # Get league teams for scouting report dropdown
+    teams_list = []
+    if settings_payload:
+        conn = get_connection()
+        try:
+            cfg = get_settings()
+            my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
+            
+            cur = conn.cursor()
+            cur.execute("SELECT id, name, manager FROM teams WHERE id != ? ORDER BY name", (my_team_id,))
+            for row in cur.fetchall():
+                teams_list.append({"id": row[0], "name": row[1], "manager": row[2]})
+        except:
+            pass
+        finally:
+            conn.close()
+    
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -78,6 +97,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
             "filter_kind": kind or "",
             "league_settings": settings_payload,
             "pending_recs": pending_count,
+            "teams": teams_list,
         },
     )
 
@@ -87,11 +107,24 @@ def notification_detail(request: Request, notification_id: int):
     row = inbox_get(notification_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Notification not found")
+    
     payload_obj = {}
+    payload_raw = row.get("payload") or "{}"
+    
+    # Ensure payload_obj is always a dict
     try:
-        payload_obj = _json.loads(row.get("payload") or "{}")
-    except Exception:
-        payload_obj = {}
+        parsed = _json.loads(payload_raw)
+        # Handle case where parsed value is a string (double-encoded JSON)
+        if isinstance(parsed, str):
+            payload_obj = _json.loads(parsed)
+        elif isinstance(parsed, dict):
+            payload_obj = parsed
+        else:
+            payload_obj = {}
+    except Exception as e:
+        # If parsing fails, payload_obj stays as empty dict
+        payload_obj = {"_parse_error": str(e), "_raw": payload_raw[:100]}
+    
     return templates.TemplateResponse(
         request, "detail.html", {"n": row, "payload_obj": payload_obj, "unread": inbox_unread()}
     )
@@ -205,6 +238,36 @@ def approve(rec_id: int):
 
     notify("info", "Recommendation approved", f"Rec {rec_id} approved.", {"id": rec_id})
     return RedirectResponse(url="/approvals", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/actions/scouting_report")
+def action_scouting_report(opponent_team_id: str = Form(...)):
+    """Generate AI-powered scouting report for specified opponent."""
+    try:
+        payload = latest_settings_payload()
+        if not payload:
+            notify("info", "No settings", "Run 'Ingest Now' first to load league data.")
+            return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+        
+        settings = LeagueSettings(**payload)
+        
+        # Get current week
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT MAX(week) FROM matchups")
+            result = cur.fetchone()
+            current_week = result[0] if result and result[0] else 1
+        finally:
+            conn.close()
+        
+        # Generate and post report
+        msg_id = post_scouting_report(settings, opponent_team_id, current_week)
+        
+        return RedirectResponse(url=f"/notifications/{msg_id}", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception as e:
+        notify("info", "Scouting error", f"Failed to generate report: {e}", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/actions/approve_waiver")

@@ -84,6 +84,22 @@
         Refresh Settings
       </button>
     </form>
+    {% if teams and teams|length > 0 %}
+    <form method="post" action="/actions/scouting_report" class="flex items-center gap-2">
+      <select name="opponent_team_id" required class="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary">
+        <option value="">Select opponent...</option>
+        {% for team in teams %}
+        <option value="{{ team.id }}">{{ team.name }} ({{ team.manager }})</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm hover:shadow flex items-center whitespace-nowrap">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+        </svg>
+        🔍 Scout Opponent
+      </button>
+    </form>
+    {% endif %}
   </div>
 </div>
 {% else %}

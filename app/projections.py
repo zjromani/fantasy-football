@@ -31,7 +31,7 @@ class PlayerProjection:
     position: str
     team: str
     week: int
-    
+
     # Standard stats
     pass_yds: Optional[float] = None
     pass_tds: Optional[float] = None
@@ -41,16 +41,16 @@ class PlayerProjection:
     receptions: Optional[float] = None
     rec_yds: Optional[float] = None
     rec_tds: Optional[float] = None
-    
+
     # Fantasy points (various scoring formats)
     fantasy_points_ppr: Optional[float] = None
     fantasy_points_half_ppr: Optional[float] = None
     fantasy_points_standard: Optional[float] = None
-    
+
     # Metadata
     source: str = "fantasypros"
     fetched_at: Optional[datetime] = None
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
@@ -72,7 +72,7 @@ class PlayerProjection:
             "source": self.source,
             "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> PlayerProjection:
         """Create from dictionary."""
@@ -105,24 +105,24 @@ class PlayerProjection:
 
 class ProjectionsCache:
     """File-based cache for projections."""
-    
+
     def __init__(self, cache_dir: str = ".cache/projections"):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def _cache_key(self, week: int, position: Optional[str] = None) -> str:
         """Generate cache key."""
         key = f"week_{week}"
         if position:
             key += f"_pos_{position}"
         return hashlib.md5(key.encode()).hexdigest()
-    
+
     def get(self, week: int, position: Optional[str] = None, max_age_hours: int = 24) -> Optional[List[PlayerProjection]]:
         """Get cached projections if fresh."""
         cache_file = self.cache_dir / f"{self._cache_key(week, position)}.json"
         if not cache_file.exists():
             return None
-        
+
         try:
             data = json.loads(cache_file.read_text())
             cached_at = datetime.fromisoformat(data["cached_at"])
@@ -131,7 +131,7 @@ class ProjectionsCache:
             return [PlayerProjection.from_dict(item) for item in data["projections"]]
         except Exception:
             return None
-    
+
     def set(self, week: int, projections: List[PlayerProjection], position: Optional[str] = None) -> None:
         """Cache projections."""
         cache_file = self.cache_dir / f"{self._cache_key(week, position)}.json"
@@ -147,22 +147,22 @@ class ProjectionsCache:
 class ProjectionsAPI:
     """
     Pluggable projections API.
-    
+
     To add your own projections source:
     1. Implement fetch_projections() to return List[PlayerProjection]
     2. Update get_projections() to use your implementation
-    
+
     Common sources:
     - FantasyPros (requires paid API key)
     - Sleeper (free but requires parsing their app data)
     - Yahoo (already integrated via yahoo_client)
     - Manual CSV upload of projections from any source
     """
-    
+
     def fetch_projections(self, season: int, week: int, position: Optional[str] = None) -> List[PlayerProjection]:
         """
         Fetch projections from your preferred source.
-        
+
         For now, returns empty list. The app works great without projections -
         AI uses real-time news, player stats from Yahoo, and matchup data instead.
         """
@@ -184,49 +184,49 @@ def get_projections(
 ) -> List[PlayerProjection]:
     """
     Get weekly projections for players.
-    
+
     Args:
         week: NFL week number (1-18)
         position: Filter by position (QB, RB, WR, TE, etc.)
         season: NFL season year (defaults to current year)
         use_cache: Whether to use cached data
         max_age_hours: Maximum age of cached data in hours
-    
+
     Returns:
         List of PlayerProjection objects
     """
     if season is None:
         season = datetime.now().year
-    
+
     cache = ProjectionsCache()
-    
+
     # Try cache first
     if use_cache:
         cached = cache.get(week, position, max_age_hours)
         if cached:
             return cached
-    
+
     # Fetch from projections API (pluggable)
     api = ProjectionsAPI()
     projections = api.fetch_projections(season, week, position)
-    
+
     # Cache results
     if projections and use_cache:
         cache.set(week, projections, position)
-    
+
     return projections
 
 
 def get_player_projection(player_name: str, week: int, position: Optional[str] = None) -> Optional[PlayerProjection]:
     """Get projection for a specific player."""
     projections = get_projections(week, position)
-    
+
     # Fuzzy match on player name
     player_lower = player_name.lower().strip()
     for proj in projections:
         if player_lower in proj.player_name.lower():
             return proj
-    
+
     return None
 
 
