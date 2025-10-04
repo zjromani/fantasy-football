@@ -26,17 +26,25 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
         cur.execute("SELECT id, name, manager FROM teams")
         teams = [{"id": row[0], "name": row[1], "manager": row[2]} for row in cur.fetchall()]
 
-        # My roster (current week)
+        # My roster (current week with team and bye info)
         my_roster = []
         if my_team_id:
             cur.execute(
-                "SELECT r.player_id, p.name, p.position, r.slot, r.status FROM rosters r "
+                "SELECT r.player_id, p.name, p.position, p.team, p.bye_week, r.slot, r.status FROM rosters r "
                 "LEFT JOIN players p ON r.player_id = p.id "
                 "WHERE r.team_id = ? ORDER BY r.week DESC LIMIT 20",
                 (my_team_id,)
             )
             my_roster = [
-                {"id": row[0], "name": row[1], "position": row[2], "slot": row[3], "status": row[4]}
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "position": row[2],
+                    "nfl_team": row[3] or "FA",
+                    "bye_week": row[4],
+                    "slot": row[5],
+                    "status": row[6]
+                }
                 for row in cur.fetchall()
             ]
 
@@ -57,6 +65,17 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
             "SELECT week, team_id, opponent_id FROM matchups ORDER BY week DESC LIMIT 12"
         )
         matchups = [{"week": row[0], "team": row[1], "opponent": row[2]} for row in cur.fetchall()]
+        
+        # Determine current week from most recent matchup
+        current_week = matchups[0]["week"] if matchups else 1
+        
+        # Get all rostered players (to help AI avoid recommending rostered players)
+        cur.execute(
+            "SELECT DISTINCT p.name, p.team FROM rosters r "
+            "JOIN players p ON r.player_id = p.id "
+            "ORDER BY p.name"
+        )
+        all_rostered_players = [f"{row[0]} ({row[1]})" for row in cur.fetchall()]
 
         return {
             "teams": teams,
@@ -64,6 +83,8 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
             "my_roster": my_roster,
             "transactions": transactions,
             "matchups": matchups,
+            "current_week": current_week,
+            "all_rostered_players": all_rostered_players,
             "settings": settings.model_dump(),
         }
     finally:
@@ -97,6 +118,8 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
             roster_detail.append({
                 "name": p.get('name'),
                 "position": p.get('position'),
+                "nfl_team": p.get('nfl_team', 'FA'),
+                "bye_week": p.get('bye_week'),
                 "slot": p.get('slot'),
                 "status": p.get('status') or "Active"
             })
@@ -116,6 +139,10 @@ YOUR CURRENT ROSTER ({len(roster_detail)} players):
 LATEST NFL NEWS (use this for injury/status updates):
 {chr(10).join(news_summary)}
 
+ALL ROSTERED PLAYERS IN LEAGUE (do NOT recommend these for waivers):
+{', '.join(context['all_rostered_players'][:100])}
+... and {len(context['all_rostered_players']) - 100} more
+
 RECENT LEAGUE TRANSACTIONS:
 {_json.dumps(context['transactions'][:3], indent=2)}
 
@@ -123,12 +150,15 @@ MATCHUP INFO:
 {_json.dumps(context['matchups'][:3], indent=2)}
 
 IMPORTANT INSTRUCTIONS:
-- Use the NEWS section above to inform your recommendations (injuries, player status, team changes)
-- Only recommend players who are actually available as free agents (not on rosters)
-- Check the transactions to see recent league activity
-- Be specific about WHICH players from the user's roster to start/sit
-- Provide FAAB bid ranges (e.g., $5-8) for waiver recommendations
+- Use the NEWS section above to inform ALL recommendations (injuries, player status, team changes)
+- Each player in YOUR ROSTER shows their NFL team (nfl_team field) - USE THIS to verify correct teams
+- Only recommend players who are actually available as free agents (not already on any roster)
+- Cross-reference news with roster players by name AND team to ensure accuracy
+- Check recent transactions to see which players were recently picked up/dropped
+- Be specific about WHICH players from the user's roster to start/sit (use exact names)
+- Provide FAAB bid ranges (e.g., $5-8) for waiver recommendations based on league budget
 - Focus on THIS week's matchups and decisions
+- If a player is on bye this week (check bye_week field), flag it prominently
 
 Generate a brief with these sections:
 1. **🎯 Actions** (3-4 items): Immediate action items for this week

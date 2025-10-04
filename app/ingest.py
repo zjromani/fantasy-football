@@ -254,6 +254,19 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                     continue
                 player = _flatten_yahoo_list(player_list)
                 pid = str(player.get("player_id") or player.get("player_key") or "")
+                
+                # Also upsert player details from roster data
+                name = player.get("name", {})
+                if isinstance(name, dict):
+                    name = name.get("full") or name.get("ascii_first", "") + " " + name.get("ascii_last", "")
+                pos = player.get("display_position") or player.get("primary_position")
+                team = player.get("editorial_team_abbr")
+                bye = None
+                if isinstance(player.get("bye_weeks"), dict):
+                    bye = player["bye_weeks"].get("week")
+                if pid and name:
+                    upsert_player(player_id=pid, name=str(name).strip(), position=str(pos) if pos else None, team=str(team) if team else None, bye_week=int(bye) if bye else None)
+                
                 # Selected position info
                 selected_list = player_wrap.get("selected_position") if isinstance(player_wrap, dict) else None
                 if isinstance(selected_list, list):
