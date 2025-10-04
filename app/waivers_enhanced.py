@@ -97,10 +97,18 @@ def analyze_waivers_enhanced(
     """
     Enhanced waiver analysis with projections and drop candidates.
     """
-    # Fetch free agents from Yahoo
+    # Fetch free agents from Yahoo using improved pagination
     client = YahooClient()
     cfg = get_settings()
-    free_agents = free_agents_from_yahoo(client, cfg.league_key, max_players=max_players)
+    
+    # Use position-specific queries with Yahoo's Add/Drop rank sort
+    from .waivers_yahoo_improved import fetch_free_agents_by_position
+    free_agents = fetch_free_agents_by_position(
+        client=client,
+        league_key=cfg.league_key,
+        positions=["QB", "RB", "WR", "TE"],
+        per_position=max(15, max_players // 4)
+    )
 
     if not free_agents:
         return []
@@ -152,20 +160,26 @@ def analyze_waivers_enhanced(
             else:
                 projection = proj_obj.fantasy_points_standard or 0
         else:
-            # Better fallback: use position-specific baselines
-            # If no projections available, use Yahoo's ownership % as a rough proxy
-            ownership = fa.get("ownership_pct", 0)
-            if ownership > 50:
-                # Likely a starter
-                position_baseline = {"QB": 18, "RB": 12, "WR": 10, "TE": 8, "K": 8, "DEF": 8}
-                projection = position_baseline.get(position, 10.0)
+            # Better fallback: Yahoo's Add/Drop rank (AR sort) already gives us quality order
+            # Top players in the list are more valuable, so use position-based scoring
+            # Since we're fetching position-by-position with AR sort, earlier = better
+            position_baseline = {"QB": 18, "RB": 12, "WR": 10, "TE": 8, "K": 8, "DEF": 8}
+            base_projection = position_baseline.get(position, 10.0)
+            
+            # Scale down based on status
+            status = fa.get("status", "")
+            if status in ["O", "IR", "SUSP"]:
+                # Out/Injured/Suspended = not playable this week
+                projection = 0.0
+            elif status in ["D", "Q"]:
+                # Doubtful/Questionable = risky, reduce projection
+                projection = base_projection * 0.5
             else:
-                # Likely a backup or low-value player
-                projection = 5.0
-
-        # Skip very low projections (not fantasy-relevant)
-        # Raise threshold to filter out more low-value players
-        if projection < 8.0:
+                # Healthy player from Yahoo's ranked list
+                projection = base_projection
+        
+        # Skip injured/out players and very low projections
+        if projection < 5.0:
             continue
 
         # Find best drop candidate (lowest projected bench player at same position)
@@ -264,7 +278,7 @@ def post_enhanced_waivers_to_inbox(
 ) -> int:
     """Post enhanced waiver recommendations to Inbox."""
     if not recommendations:
-        return notify("waivers", "⚠️ No Waiver Recommendations", 
+        return notify("waivers", "⚠️ No Waiver Recommendations",
                      "No viable free agents found. This could be because:\n\n"
                      "• Yahoo API limited to 25 free agents (API restriction)\n"
                      "• No projections API configured (using fallback logic)\n"
