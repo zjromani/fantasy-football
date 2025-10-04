@@ -128,9 +128,9 @@ def dashboard_summary():
         payload = latest_settings_payload()
         faab_remaining = 100  # Default
         if payload:
-            faab_budget = payload.get("faab_budget", 100)
+            faab_budget = payload.get("faab_budget")
             # TODO: Track actual FAAB spent
-            faab_remaining = faab_budget
+            faab_remaining = faab_budget if faab_budget is not None else 100
 
         # Get last sync time
         cur.execute("SELECT MAX(created_at) FROM snapshots")
@@ -174,7 +174,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
     rows = inbox_list(kind)
     settings_payload = latest_settings_payload() or {}
     pending_count = count_pending_recommendations()
-    
+
     # Fetch top pending recommendations for Action Cards
     pending_recs = []
     try:

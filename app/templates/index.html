@@ -82,9 +82,9 @@
         </div>
 
         <!-- Actions Button -->
-        <a href="#actions" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center">
+        <button onclick="scrollToActions()" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center">
           <span id="coach-actions-text">All Set</span>
-        </a>
+        </button>
       </div>
 
     </div>
@@ -123,7 +123,8 @@
       }
 
       // Update FAAB
-      document.getElementById('coach-faab').textContent = `$${data.faab_remaining}`;
+      const faab = data.faab_remaining !== null && data.faab_remaining !== undefined ? data.faab_remaining : '--';
+      document.getElementById('coach-faab').textContent = `$${faab}`;
 
       // Update sync status
       document.getElementById('coach-sync').textContent = data.last_sync || 'Never';
@@ -171,6 +172,20 @@
       updateCoachBar();
     }
   });
+  
+  // Scroll to Action Cards section
+  function scrollToActions() {
+    const actionsSection = document.getElementById('actions');
+    if (actionsSection) {
+      actionsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      // If no pending actions, scroll to Activity Feed
+      const feedSection = document.querySelector('.space-y-3');
+      if (feedSection) {
+        feedSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }
 </script>
 
 <!-- League Settings Banner -->
@@ -424,13 +439,13 @@
       View All →
     </a>
   </div>
-  
+
   <div class="space-y-4">
     {% for rec in pending_recs[:3] %}
       {{ action_card.render_action_card(rec) }}
     {% endfor %}
   </div>
-  
+
   {% if pending_recs|length > 3 %}
   <div class="mt-4 text-center">
     <a href="/approvals" class="inline-flex items-center px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-300 hover:border-slate-400 rounded-lg font-semibold transition shadow-sm">
