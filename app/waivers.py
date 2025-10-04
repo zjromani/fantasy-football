@@ -161,33 +161,33 @@ def free_agents_from_yahoo(client: YahooClient, league_key: str, max_players: in
         params={"format": "json", "count": str(max_players)}
     )
     data = response.json()
-    
+
     # Parse Yahoo's nested structure
     fc = data.get("fantasy_content", {})
     league_data = fc.get("league")
-    
+
     # Yahoo returns league as [league_obj, {sub_resources}]
     players_data = {}
     if isinstance(league_data, list) and len(league_data) > 1:
         players_data = league_data[1].get("players", {})
     elif isinstance(league_data, dict):
         players_data = league_data.get("players", {})
-    
+
     result: List[Dict] = []
-    
+
     # Players are keyed numerically: "0", "1", "2", ...
     for key, value in players_data.items():
         if key == "count" or not key.isdigit():
             continue
-        
+
         player_wrap = value
         if not isinstance(player_wrap, dict):
             continue
-        
+
         player_list = player_wrap.get("player")
         if not isinstance(player_list, list):
             continue
-        
+
         # Flatten Yahoo's nested list structure
         player = {}
         for item in player_list:
@@ -197,22 +197,22 @@ def free_agents_from_yahoo(client: YahooClient, league_key: str, max_players: in
                         player.update(sub_item)
             elif isinstance(item, dict):
                 player.update(item)
-        
+
         # Extract player info
         pid = str(player.get("player_id") or player.get("player_key") or "")
         if not pid:
             continue
-        
+
         name_obj = player.get("name", {})
         if isinstance(name_obj, dict):
             name = name_obj.get("full") or name_obj.get("ascii_first", "") + " " + name_obj.get("ascii_last", "")
             name = name.strip()
         else:
             name = str(name_obj) if name_obj else pid
-        
+
         pos = player.get("display_position") or player.get("primary_position") or "UTIL"
         team = player.get("editorial_team_abbr") or ""
-        
+
         # Basic projections (we'll enhance this with real projections later)
         # For now, use a simple heuristic based on position
         proj_base = {
@@ -223,7 +223,7 @@ def free_agents_from_yahoo(client: YahooClient, league_key: str, max_players: in
             "K": 7.0,
             "DEF": 7.0,
         }.get(pos, 5.0)
-        
+
         result.append({
             "id": pid,
             "name": name,
@@ -233,10 +233,10 @@ def free_agents_from_yahoo(client: YahooClient, league_key: str, max_players: in
             "trend_last2": 0.0,  # TODO: Calculate from recent games
             "schedule_next4": 1.5,  # TODO: Get from matchups
         })
-        
+
         if len(result) >= max_players:
             break
-    
+
     return result
 
 

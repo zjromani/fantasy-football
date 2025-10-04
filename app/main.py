@@ -393,8 +393,8 @@ def action_waivers_demo():
         {"id": "p_wr1", "name": "Volume WR", "position": "WR", "proj_base": 12, "trend_last2": 0, "schedule_next4": 0},
         {"id": "p_te1", "name": "Athletic TE", "position": "TE", "proj_base": 8, "trend_last2": 1, "schedule_next4": 2},
     ]
-    recommend_waivers(settings=settings, current_starters_count=current, free_agents=free_agents, faab_remaining=50, waiver_type="faab", top_n=3)
-    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    recs, msg_id = recommend_waivers(settings=settings, current_starters_count=current, free_agents=free_agents, faab_remaining=50, waiver_type="faab", top_n=3)
+    return RedirectResponse(url=f"/notifications/{msg_id}" if msg_id else "/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/actions/waivers_live")
@@ -416,10 +416,11 @@ def action_waivers_live(league_key: str = Form(None)):
         fa = free_agents_from_yahoo(client, league_key)
         # Rough starter counts; future: compute from roster data
         current = {"RB": settings.positional_limits.rb, "WR": settings.positional_limits.wr, "QB": settings.positional_limits.qb, "TE": settings.positional_limits.te}
-        recommend_waivers(settings=settings, current_starters_count=current, free_agents=fa, faab_remaining=100 if settings.faab_budget else 0, waiver_type="faab", top_n=5)
+        recs, msg_id = recommend_waivers(settings=settings, current_starters_count=current, free_agents=fa, faab_remaining=100 if settings.faab_budget else 0, waiver_type="faab", top_n=5)
+        return RedirectResponse(url=f"/notifications/{msg_id}" if msg_id else "/", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as err:
         notify("info", "Waivers live error", f"{err}", {"league_key": league_key})
-    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/actions/load_settings")
