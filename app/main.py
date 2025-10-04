@@ -19,6 +19,7 @@ from .ingest import fetch_league_bundle, persist_bundle
 from .store import record_snapshot, list_recommendations, set_recommendation_status, count_pending_recommendations, get_recommendation, insert_transaction_raw
 from .config import get_settings
 from .utils import normalize_league_key
+from .news import fetch_all_news
 
 
 @asynccontextmanager
@@ -39,6 +40,14 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "t
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}
+
+
+@app.get("/api/news")
+def api_news(limit: int = 30):
+    """Get latest fantasy football news from all sources."""
+    from fastapi.responses import JSONResponse
+    items = fetch_all_news(max_age_minutes=20, limit_per_source=min(20, limit))
+    return JSONResponse({"items": [it.to_dict() for it in items[:limit]]})
 
 
 @app.get("/")

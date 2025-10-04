@@ -9,6 +9,7 @@ from .store import get_connection
 from .ai.client import ask
 from .ai.config import get_ai_settings
 from .config import get_settings
+from .news import fetch_all_news, get_injury_news
 
 
 def _get_league_context(settings: LeagueSettings) -> Dict:
@@ -72,41 +73,71 @@ def _get_league_context(settings: LeagueSettings) -> Dict:
 def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
     """Generate AI-powered GM brief using OpenAI."""
     context = _get_league_context(settings)
-
+    
     try:
         # Check if OpenAI is configured
         ai_settings = get_ai_settings()
-
+        
+        # Get latest news for context
+        all_news = fetch_all_news(max_age_minutes=60, limit_per_source=15)
+        injury_news = get_injury_news(limit=10)
+        
+        # Format news for AI
+        news_summary = []
+        for item in injury_news[:5]:
+            news_summary.append(f"- [{item.source}] {item.title}")
+        
+        for item in all_news[:10]:
+            if item.category != "injury":  # Already got injuries above
+                news_summary.append(f"- [{item.source}] {item.title}")
+        
+        # Build enhanced context with player details
+        roster_detail = []
+        for p in context['my_roster']:
+            roster_detail.append({
+                "name": p.get('name'),
+                "position": p.get('position'),
+                "slot": p.get('slot'),
+                "status": p.get('status') or "Active"
+            })
+        
         # Build prompt for OpenAI
-        prompt = f"""You are an expert fantasy football advisor. Generate a concise GM brief for the user's team.
+        prompt = f"""You are an expert fantasy football advisor for NFL Week {context.get('current_week', '?')}. 
+Generate a concise, actionable GM brief for the user's fantasy team.
 
-League Settings:
-- Scoring: PPR={settings.scoring.ppr}
-- Roster Slots: {settings.roster_slots}
+LEAGUE SETTINGS:
+- Scoring: {"PPR (1.0)" if settings.scoring.ppr == 1 else ("Half-PPR (0.5)" if settings.scoring.ppr == 0.5 else "Standard (0.0)")}
+- Starting Roster: {settings.roster_slots}
 - FAAB Budget: ${settings.faab_budget or 100}
 
-Current Team Context:
-- Team ID: {context['my_team_id']}
-- Roster Size: {len(context['my_roster'])} players
-- Recent Activity: {len(context['transactions'])} transactions
+YOUR CURRENT ROSTER ({len(roster_detail)} players):
+{_json.dumps(roster_detail, indent=2)}
 
-Your Roster:
-{_json.dumps(context['my_roster'], indent=2)}
+LATEST NFL NEWS (use this for injury/status updates):
+{chr(10).join(news_summary)}
 
-Recent League Transactions:
-{_json.dumps(context['transactions'][:5], indent=2)}
+RECENT LEAGUE TRANSACTIONS:
+{_json.dumps(context['transactions'][:3], indent=2)}
 
-Current Matchups:
-{_json.dumps(context['matchups'][:6], indent=2)}
+MATCHUP INFO:
+{_json.dumps(context['matchups'][:3], indent=2)}
+
+IMPORTANT INSTRUCTIONS:
+- Use the NEWS section above to inform your recommendations (injuries, player status, team changes)
+- Only recommend players who are actually available as free agents (not on rosters)
+- Check the transactions to see recent league activity
+- Be specific about WHICH players from the user's roster to start/sit
+- Provide FAAB bid ranges (e.g., $5-8) for waiver recommendations
+- Focus on THIS week's matchups and decisions
 
 Generate a brief with these sections:
-1. **Actions** (3-4 items): Immediate action items for this week
-2. **Lineup** (2-3 items): Sit/start recommendations based on roster and matchups
-3. **Waivers** (Top 3-5): Specific available players to target with FAAB ranges based on team needs
-4. **Trades** (2-3 items): Trade opportunities with league managers
-5. **Key Insights**: Any important trends or alerts
+1. **🎯 Actions** (3-4 items): Immediate action items for this week
+2. **👥 Lineup** (2-3 items): Specific sit/start advice from YOUR ROSTER above
+3. **➕ Waivers** (Top 3-5): Available free agents to target with FAAB ranges
+4. **🔄 Trades** (1-2 items): Trade opportunities based on team needs
+5. **⚡ Key Insights**: Injury alerts and important news affecting your players
 
-Format as markdown with clear sections. Be specific with player names from the roster and reasoning."""
+Format as markdown. Be concise but specific."""
 
         # Call OpenAI
         response = ask(
