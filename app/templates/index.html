@@ -1,6 +1,178 @@
 {% extends "base.html" %}
 {% block title %}Inbox - Fantasy AI{% endblock %}
 {% block content %}
+
+<!-- Coach Bar: Always-visible status strip -->
+<div id="coach-bar" class="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white shadow-lg sticky top-0 z-50 border-b border-slate-700 -mx-4 -mt-6 mb-6 sm:-mx-6 lg:-mx-8">
+  <div class="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      
+      <!-- Left: Week & Opponent -->
+      <div class="flex items-center space-x-4 sm:space-x-6">
+        <div class="flex items-center">
+          <svg class="w-5 h-5 mr-2 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">Week</div>
+            <div id="coach-week" class="text-sm font-semibold">--</div>
+          </div>
+        </div>
+        
+        <div id="coach-opponent" class="hidden sm:flex items-center">
+          <div>
+            <div class="text-xs text-slate-400">vs</div>
+            <div class="text-sm font-semibold">Loading...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Middle: Team Status -->
+      <div class="flex items-center space-x-3 sm:space-x-4">
+        <!-- Starters Ready -->
+        <div class="flex items-center">
+          <svg class="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">Ready</div>
+            <div id="coach-starters" class="text-sm font-semibold">-/-</div>
+          </div>
+        </div>
+        
+        <!-- Injuries -->
+        <div id="coach-injuries-wrapper" class="hidden">
+          <div class="flex items-center">
+            <svg class="w-5 h-5 mr-2 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <div>
+              <div class="text-xs text-slate-400">Injuries</div>
+              <div id="coach-injuries" class="text-sm font-semibold text-red-400">0</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- FAAB -->
+        <div class="flex items-center">
+          <svg class="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div>
+            <div class="text-xs text-slate-400">FAAB</div>
+            <div id="coach-faab" class="text-sm font-semibold">$--</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right: Sync & Actions -->
+      <div class="flex items-center space-x-3 sm:space-x-4">
+        <!-- Last Sync -->
+        <div class="flex items-center">
+          <div class="relative">
+            <svg id="coach-sync-icon" class="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <span id="coach-pending-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-semibold"></span>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">Synced</div>
+            <div id="coach-sync" class="text-xs font-medium">--</div>
+          </div>
+        </div>
+        
+        <!-- Actions Button -->
+        <a href="#actions" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center">
+          <span id="coach-actions-text">All Set</span>
+        </a>
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+<!-- Coach Bar Auto-Refresh Script -->
+<script>
+  // Fetch and update Coach Bar every 30 seconds
+  async function updateCoachBar() {
+    try {
+      const response = await fetch('/api/dashboard/summary');
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      
+      // Update week
+      document.getElementById('coach-week').textContent = `Week ${data.current_week}`;
+      
+      // Update opponent
+      if (data.opponent) {
+        const opponentEl = document.getElementById('coach-opponent');
+        opponentEl.classList.remove('hidden');
+        opponentEl.querySelector('.text-sm').textContent = data.opponent.name.substring(0, 20);
+      }
+      
+      // Update starters
+      document.getElementById('coach-starters').textContent = `${data.starters_ready}/${data.total_starters}`;
+      
+      // Update injuries
+      if (data.injury_count > 0) {
+        document.getElementById('coach-injuries-wrapper').classList.remove('hidden');
+        document.getElementById('coach-injuries').textContent = data.injury_count;
+      } else {
+        document.getElementById('coach-injuries-wrapper').classList.add('hidden');
+      }
+      
+      // Update FAAB
+      document.getElementById('coach-faab').textContent = `$${data.faab_remaining}`;
+      
+      // Update sync status
+      document.getElementById('coach-sync').textContent = data.last_sync || 'Never';
+      
+      // Update sync icon (add spin if syncing)
+      const syncIcon = document.getElementById('coach-sync-icon');
+      if (data.sync_status === 'syncing') {
+        syncIcon.classList.add('animate-spin');
+      } else {
+        syncIcon.classList.remove('animate-spin');
+      }
+      
+      // Update pending badge
+      const badge = document.getElementById('coach-pending-badge');
+      const actionsBtn = document.getElementById('coach-actions-btn');
+      const actionsText = document.getElementById('coach-actions-text');
+      
+      if (data.pending_count > 0) {
+        badge.classList.remove('hidden');
+        badge.textContent = data.pending_count;
+        actionsText.textContent = `${data.pending_count} Action${data.pending_count !== 1 ? 's' : ''}`;
+        actionsBtn.classList.remove('bg-teal-600', 'hover:bg-teal-700');
+        actionsBtn.classList.add('bg-orange-600', 'hover:bg-orange-700');
+      } else {
+        badge.classList.add('hidden');
+        actionsText.textContent = 'All Set';
+        actionsBtn.classList.remove('bg-orange-600', 'hover:bg-orange-700');
+        actionsBtn.classList.add('bg-teal-600', 'hover:bg-teal-700');
+      }
+      
+    } catch (error) {
+      console.error('Failed to update Coach Bar:', error);
+    }
+  }
+  
+  // Update immediately on page load
+  updateCoachBar();
+  
+  // Update every 30 seconds
+  setInterval(updateCoachBar, 30000);
+  
+  // Update when page becomes visible (user returns to tab)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      updateCoachBar();
+    }
+  });
+</script>
+
 <!-- League Settings Banner -->
 {% if league_settings and league_settings.get("scoring") %}
 <div class="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-lg p-6 mb-6 shadow-sm slide-in">
