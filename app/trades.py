@@ -94,11 +94,11 @@ def _trade_delta_for_teams(a: TeamState, b: TeamState, send_from_a: List[Player]
 
 def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamState, *, top_k: int = 3) -> List[TradeProposal]:
     proposals: List[TradeProposal] = []
-    
+
     # Calculate needs once (performance optimization)
     need_a = _need_score(team_a)
     need_b = _need_score(team_b)
-    
+
     # Helper closure to build detailed rationale with manager context
     def build_rationale(send_players: List[Player], receive_players: List[Player], da: float, db: float) -> str:
         """Build human-readable trade rationale explaining benefits for both sides."""
@@ -111,7 +111,7 @@ def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamStat
                 your_gains.append(f"no bye weeks")
             if p.playoff_proj > 15:
                 your_gains.append(f"strong playoff schedule")
-        
+
         # Why they accept
         their_gains = []
         for p in send_players:
@@ -119,20 +119,20 @@ def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamStat
                 their_gains.append(f"fills their {p.position} need")
             if p.bye_next3 == 0 and team_b.bye_exposure > 0:
                 their_gains.append(f"solves bye week issue")
-        
+
         # Manager context from transaction history analysis
         mgr_context = ""
         if team_b.manager_profile.get("active_manager"):
             mgr_context = "Active manager likely to consider. "
         elif team_b.manager_profile.get("trade_count", 0) == 0:
             mgr_context = "Manager rarely trades - strong offer needed. "
-        
+
         # Build final human-readable rationale
         your_part = f"You gain {da:.1f} pts: {', '.join(your_gains[:2]) if your_gains else 'roster upgrade'}"
         their_part = f"They gain {db:.1f} pts: {', '.join(their_gains[:2]) if their_gains else 'improves depth'}"
-        
+
         return f"{mgr_context}{your_part}. {their_part}."
-    
+
     # 1-for-1 trades
     for pa in team_a.roster:
         for pb in team_b.roster:
