@@ -92,6 +92,58 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
     # Defensive parsing; if shapes are unexpected, skip rather than error
     import json as _json
 
+    def _flatten_yahoo_list(obj: Any) -> dict:
+        """Yahoo returns objects as lists of single-key dicts. Flatten to one dict."""
+        if not isinstance(obj, list):
+            return obj if isinstance(obj, dict) else {}
+        result = {}
+        for item in obj:
+            if isinstance(item, dict):
+                result.update(item)
+            elif isinstance(item, list):
+                # Nested list (rare)
+                nested = _flatten_yahoo_list(item)
+                if nested:
+                    result.update(nested)
+        return result
+
+    def _extract_items(data: Any, *path: str) -> list:
+        """Navigate Yahoo's fantasy_content.league.X structure and extract numeric-keyed items.
+        
+        Yahoo API returns: fantasy_content.league = [league_obj, sub_resource]
+        where sub_resource contains the actual collection (teams, players, etc.)
+        """
+        current = data
+        for key in path:
+            if isinstance(current, dict):
+                current = current.get(key, {})
+            elif isinstance(current, list):
+                # Yahoo's league is a list: [league_info, sub_resource]
+                # If we're looking for a sub-resource, check index 1
+                if key == "league" and len(current) > 0:
+                    # Keep it as list so next iteration can handle sub-resource
+                    pass
+                elif len(current) > 1 and isinstance(current[1], dict) and key in current[1]:
+                    # Sub-resource found at index 1
+                    current = current[1].get(key, {})
+                elif len(current) == 1:
+                    current = current[0]
+                else:
+                    return []
+            else:
+                return []
+        
+        if isinstance(current, list):
+            return current
+        elif isinstance(current, dict):
+            # Yahoo returns collections as {count: N, "0": {...}, "1": {...}}
+            items = []
+            for k, v in current.items():
+                if k.isdigit() and isinstance(v, dict):
+                    items.append(v)
+            return items
+        return []
+
     # Teams
     teams = bundle.get("teams")
     if isinstance(teams, list):
@@ -104,6 +156,25 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                 name = name.get("full") or name.get("display") or tid
             manager = (t.get("managers") or [{}])[0].get("nickname") if isinstance(t.get("managers"), list) else None
             abbrev = (t.get("team") or {}).get("abbr") or t.get("abbrev")
+            if tid and name:
+                upsert_team(team_id=tid, name=str(name), manager=manager, abbrev=abbrev)
+    elif isinstance(teams, dict):
+        # Parse Yahoo structure: fantasy_content.league.teams
+        for team_wrap in _extract_items(teams, "fantasy_content", "league", "teams"):
+            # team_wrap = {"team": [[{team_key: ...}, {team_id: ...}, ...]]}
+            team_list = team_wrap.get("team") if isinstance(team_wrap, dict) else None
+            if not isinstance(team_list, list):
+                continue
+            team = _flatten_yahoo_list(team_list)
+            tid = str(team.get("team_id") or team.get("team_key") or "")
+            name = team.get("name", "")
+            manager = None
+            if isinstance(team.get("managers"), list) and team["managers"]:
+                mgr_wrap = team["managers"][0]
+                if isinstance(mgr_wrap, dict):
+                    mgr = mgr_wrap.get("manager", {})
+                    manager = mgr.get("nickname") or mgr.get("guid")
+            abbrev = None
             if tid and name:
                 upsert_team(team_id=tid, name=str(name), manager=manager, abbrev=abbrev)
 
@@ -122,6 +193,23 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
             bye = p.get("bye_week") or (p.get("bye_weeks") or {}).get("week")
             if pid and name:
                 upsert_player(player_id=pid, name=str(name), position=str(pos) if pos else None, team=str(team) if team else None, bye_week=int(bye) if bye else None)
+    elif isinstance(players, dict):
+        for player_wrap in _extract_items(players, "fantasy_content", "league", "players"):
+            player_list = player_wrap.get("player") if isinstance(player_wrap, dict) else None
+            if not isinstance(player_list, list):
+                continue
+            player = _flatten_yahoo_list(player_list)
+            pid = str(player.get("player_id") or player.get("player_key") or "")
+            name = player.get("name", {})
+            if isinstance(name, dict):
+                name = name.get("full") or name.get("ascii_first", "") + " " + name.get("ascii_last", "")
+            pos = player.get("display_position") or player.get("primary_position")
+            team = player.get("editorial_team_abbr")
+            bye = None
+            if isinstance(player.get("bye_weeks"), dict):
+                bye = player["bye_weeks"].get("week")
+            if pid and name:
+                upsert_player(player_id=pid, name=str(name).strip(), position=str(pos) if pos else None, team=str(team) if team else None, bye_week=int(bye) if bye else None)
 
     # Rosters
     rosters = bundle.get("rosters")
@@ -141,11 +229,48 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                 status = entry.get("status")
                 if team_id and pid and week:
                     upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
+    elif isinstance(rosters, dict):
+        # Rosters come from teams;out=roster, so parse teams with their rosters
+        for team_wrap in _extract_items(rosters, "fantasy_content", "league", "teams"):
+            team_list = team_wrap.get("team") if isinstance(team_wrap, dict) else None
+            if not isinstance(team_list, list):
+                continue
+            team = _flatten_yahoo_list(team_list)
+            team_id = str(team.get("team_id") or team.get("team_key") or "")
+            roster = team.get("roster", {})
+            if not isinstance(roster, dict):
+                continue
+            week = roster.get("week")
+            if isinstance(week, str) and week.isdigit():
+                week = int(week)
+            elif not isinstance(week, int):
+                week = 0
+            # roster["0"].players contains the actual player list
+            roster_wrap = roster.get("0", {})
+            players_data = roster_wrap.get("players", {})
+            for player_wrap in _extract_items(players_data):
+                player_list = player_wrap.get("player") if isinstance(player_wrap, dict) else None
+                if not isinstance(player_list, list):
+                    continue
+                player = _flatten_yahoo_list(player_list)
+                pid = str(player.get("player_id") or player.get("player_key") or "")
+                # Selected position info
+                selected_list = player_wrap.get("selected_position") if isinstance(player_wrap, dict) else None
+                if isinstance(selected_list, list):
+                    selected = _flatten_yahoo_list(selected_list)
+                elif isinstance(selected_list, dict):
+                    selected = selected_list
+                else:
+                    selected = {}
+                slot = selected.get("position") if isinstance(selected, dict) else None
+                status = player.get("status")
+                if team_id and pid and week:
+                    upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
 
     # Matchups
-    matchups = bundle.get("matchups") or bundle.get("scoreboard")
-    if isinstance(matchups, list):
-        for m in matchups:
+    matchups_raw = bundle.get("matchups")
+    if isinstance(matchups_raw, list):
+        for m in matchups_raw:
             if not isinstance(m, dict):
                 continue
             week = int(m.get("week") or 0)
@@ -156,6 +281,40 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
             if week and a_id and b_id:
                 upsert_matchup(week=week, team_id=a_id, opponent_id=b_id, projected=None, actual=None, result=None)
                 upsert_matchup(week=week, team_id=b_id, opponent_id=a_id, projected=None, actual=None, result=None)
+    elif isinstance(matchups_raw, dict):
+        fc = matchups_raw.get("fantasy_content", {})
+        league = fc.get("league", [])
+        if not isinstance(league, list) or len(league) < 2:
+            pass
+        else:
+            scoreboard = league[1].get("scoreboard", {})
+            week = scoreboard.get("week")
+            if isinstance(week, str) and week.isdigit():
+                week = int(week)
+            elif not isinstance(week, int):
+                week = 0
+            # scoreboard["0"].matchups contains the actual matchups
+            sb_wrap = scoreboard.get("0", {})
+            matchups_dict = sb_wrap.get("matchups", {})
+            for matchup_wrap in _extract_items(matchups_dict):
+                matchup_data = matchup_wrap.get("matchup", {}) if isinstance(matchup_wrap, dict) else {}
+                if not isinstance(matchup_data, dict):
+                    continue
+                # matchup_data["0"].teams contains the team list
+                teams_wrap = matchup_data.get("0", {})
+                teams = teams_wrap.get("teams", {})
+                team_list = _extract_items(teams)
+                if len(team_list) >= 2:
+                    team_a_list = team_list[0].get("team") if isinstance(team_list[0], dict) else None
+                    team_b_list = team_list[1].get("team") if isinstance(team_list[1], dict) else None
+                    if isinstance(team_a_list, list) and isinstance(team_b_list, list):
+                        team_a = _flatten_yahoo_list(team_a_list)
+                        team_b = _flatten_yahoo_list(team_b_list)
+                        a_id = str(team_a.get("team_id") or team_a.get("team_key") or "")
+                        b_id = str(team_b.get("team_id") or team_b.get("team_key") or "")
+                        if week and a_id and b_id:
+                            upsert_matchup(week=week, team_id=a_id, opponent_id=b_id, projected=None, actual=None, result=None)
+                            upsert_matchup(week=week, team_id=b_id, opponent_id=a_id, projected=None, actual=None, result=None)
 
     # Transactions
     txs = bundle.get("transactions")
@@ -166,6 +325,16 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
             kind = str(tx.get("type") or tx.get("kind") or "")
             team_id = str(tx.get("team_id") or tx.get("teamKey") or "")
             insert_transaction_raw(kind=kind or None, team_id=team_id or None, raw=_json.dumps(tx))
+    elif isinstance(txs, dict):
+        for tx_wrap in _extract_items(txs, "fantasy_content", "league", "transactions"):
+            tx_list = tx_wrap.get("transaction") if isinstance(tx_wrap, dict) else None
+            if not isinstance(tx_list, list):
+                continue
+            tx = _flatten_yahoo_list(tx_list)
+            kind = str(tx.get("type") or "")
+            team_id = None
+            # Transactions can have players with source/destination teams
+            insert_transaction_raw(kind=kind or None, team_id=team_id, raw=_json.dumps(tx))
 
 
 __all__ = ["fetch_league_bundle", "ingest"]
