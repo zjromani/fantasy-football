@@ -1,5 +1,4 @@
 <!-- Action Card: Owner decision surface for GM recommendations -->
-<!-- Keyboard shortcuts: A = Accept first card, D = Decline first card -->
 <!-- TODO: Add projected delta badge (e.g., "+2.4 pts") - needs backend to calculate -->
 <!-- TODO: Add data freshness indicator (e.g., "Projections • 4h old") - needs backend timestamp -->
 <!-- TODO: Add optimistic UI with Undo toast after approval -->
@@ -251,7 +250,7 @@
       onclick="handleApproval({{ rec['id'] }}, 'approve')"
       class="flex-1 inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-lg font-bold text-base transition shadow-md hover:shadow-lg transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
       id="approve-btn-{{ rec['id'] }}"
-      aria-label="Accept recommendation (keyboard: A)"
+      aria-label="Accept recommendation"
     >
       <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -264,7 +263,7 @@
       onclick="handleApproval({{ rec['id'] }}, 'deny')"
       class="flex-shrink-0 px-6 py-3 bg-white hover:bg-red-50 text-red-600 border-2 border-red-200 hover:border-red-400 rounded-lg font-semibold text-base transition disabled:opacity-50 disabled:cursor-not-allowed"
       id="deny-btn-{{ rec['id'] }}"
-      aria-label="Decline recommendation (keyboard: D)"
+      aria-label="Decline recommendation"
     >
       <span class="inline sm:hidden">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -303,29 +302,6 @@
 </div>
 
 <script>
-  // Keyboard shortcuts: A = Accept first visible card, D = Decline first visible card
-  document.addEventListener('keydown', (e) => {
-    // Skip if user is typing in an input field
-    if (e.target.matches('input, textarea, select')) return;
-
-    const firstCard = document.querySelector('.action-card:not([style*="opacity: 0"])');
-    if (!firstCard) return;
-
-    if (e.key.toLowerCase() === 'a') {
-      e.preventDefault();
-      const acceptBtn = firstCard.querySelector('[id^="approve-btn-"]');
-      if (acceptBtn && !acceptBtn.disabled) {
-        acceptBtn.click();
-      }
-    } else if (e.key.toLowerCase() === 'd') {
-      e.preventDefault();
-      const declineBtn = firstCard.querySelector('[id^="deny-btn-"]');
-      if (declineBtn && !declineBtn.disabled) {
-        declineBtn.click();
-      }
-    }
-  });
-
   function toggleDetails(id) {
     const details = document.getElementById(id + '-details');
     details.classList.toggle('hidden');

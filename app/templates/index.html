@@ -82,10 +82,8 @@
         </div>
 
         <!-- Actions Button -->
-        <button onclick="scrollToActions()" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center group">
+        <button onclick="scrollToActions()" id="coach-actions-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 rounded-lg text-sm font-medium transition shadow-sm flex items-center">
           <span id="coach-actions-text">All Set</span>
-          <!-- TODO: Add ⌘K hint and wire up command palette -->
-          <span class="hidden group-hover:inline-block ml-2 text-xs text-teal-200">⌘K</span>
         </button>
       </div>
 
@@ -506,7 +504,7 @@
     <div class="flex items-center justify-between">
       <p class="text-sm text-slate-700 flex-1">
         <span class="font-bold text-teal-900">Owner Mode:</span> Your AI GM has analyzed the latest data and prepared {{ pending_recs|length }} recommendation{{ 's' if pending_recs|length != 1 else '' }} for your approval.
-        <span class="text-slate-500">• Review each decision or use keyboard shortcuts (A/D).</span>
+        <span class="text-slate-500">• Review each decision below.</span>
       </p>
 
       {% if pending_recs|length > 1 %}
