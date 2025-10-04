@@ -528,53 +528,53 @@ def action_find_trades():
     try:
         from .trades import propose_trades
         from .trade_builder import build_team_state
-        
+
         payload = latest_settings_payload()
         if not payload:
             notify("info", "No settings", "Run 'Sync Yahoo Data' first to load league data.", {})
             return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-        
+
         settings = LeagueSettings(**payload)
         cfg = get_settings()
         my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
-        
+
         if not my_team_id:
             notify("info", "No team configured", "Set TEAM_KEY in environment to identify your team.", {})
             return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-        
+
         conn = get_connection()
         try:
             cur = conn.cursor()
-            
+
             # Get current week
             cur.execute("SELECT MAX(week) FROM matchups")
             result = cur.fetchone()
             current_week = result[0] if result and result[0] else 1
-            
+
             # Get all teams except mine
             cur.execute("SELECT id, name, manager FROM teams WHERE id != ? ORDER BY name", (my_team_id,))
             opponent_teams = [{"id": row[0], "name": row[1], "manager": row[2]} for row in cur.fetchall()]
-            
+
             if not opponent_teams:
                 notify("info", "No teams found", "No opponent teams available for trade analysis.", {})
                 return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-            
+
             # Build my team state
             my_team_state = build_team_state(my_team_id, settings, current_week)
-            
+
             if len(my_team_state.roster) == 0:
                 notify("info", "No roster data", "Run 'Sync Yahoo Data' to load roster information.", {})
                 return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-            
+
             # Scan all teams for trade opportunities
             all_proposals = []
-            
+
             for opp in opponent_teams:
                 opponent_state = build_team_state(opp["id"], settings, current_week)
-                
+
                 if len(opponent_state.roster) == 0:
                     continue
-                
+
                 # Use existing trades.py logic to find mutual benefit trades
                 proposals = propose_trades(
                     settings=settings,
@@ -582,7 +582,7 @@ def action_find_trades():
                     team_b=opponent_state,
                     top_k=2  # Get top 2 from each matchup
                 )
-                
+
                 # Attach opponent info for display
                 for p in proposals:
                     p.opponent_name = opp["name"]
@@ -592,9 +592,9 @@ def action_find_trades():
                     receive_names = [player.name for player in opponent_state.roster if player.id in p.receive]
                     p.send_names = send_names
                     p.receive_names = receive_names
-                
+
                 all_proposals.extend(proposals)
-            
+
             if not all_proposals:
                 notify(
                     "trades",
@@ -604,7 +604,7 @@ def action_find_trades():
                     {}
                 )
                 return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-            
+
             # Sort by value score: acceptance_odds * both_sides_gain
             # This prioritizes trades that are LIKELY TO BE ACCEPTED and VALUABLE
             best_proposals = sorted(
@@ -612,7 +612,7 @@ def action_find_trades():
                 key=lambda p: (p.acceptance_odds or 0.5) * (p.both_sides_gain or 0),
                 reverse=True
             )[:5]  # Keep top 5 overall
-            
+
             # Build manager intel summary
             intel_summary = []
             seen_managers = set()
@@ -624,12 +624,12 @@ def action_find_trades():
                     intel_summary.append(
                         f"{mgr} ({p.opponent_name}): {rate:.0f}% likely to accept trades"
                     )
-            
+
             # Create trade recommendations in Owner Inbox
             for i, p in enumerate(best_proposals[:3]):  # Show top 3 in notification
                 send_str = " + ".join(p.send_names) if hasattr(p, 'send_names') else ", ".join(p.send)
                 receive_str = " + ".join(p.receive_names) if hasattr(p, 'receive_names') else ", ".join(p.receive)
-                
+
                 notify(
                     kind="trades",
                     title=f"Trade with {p.opponent_name}: {len(p.send)}-for-{len(p.receive)}",
@@ -647,14 +647,14 @@ def action_find_trades():
                         "manager_tendencies": [intel_summary[0]] if intel_summary else [],
                     }
                 )
-            
+
         finally:
             conn.close()
-            
+
     except Exception as e:
         import traceback
         notify("info", "Trade finder error", f"Failed to scan for trades: {e}\n{traceback.format_exc()[:200]}", {})
-    
+
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
