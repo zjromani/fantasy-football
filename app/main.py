@@ -71,18 +71,52 @@ def list_notifications(request: Request, kind: Optional[str] = None):
     settings_payload = latest_settings_payload() or {}
     pending_count = count_pending_recommendations()
 
-    # Get league teams for scouting report dropdown
+    # Get league teams for scouting report dropdown and my starting lineup
     teams_list = []
+    my_lineup = []
     if settings_payload:
         conn = get_connection()
         try:
             cfg = get_settings()
             my_team_id = cfg.team_key.split(".")[-1] if cfg.team_key else None
-
+            
             cur = conn.cursor()
             cur.execute("SELECT id, name, manager FROM teams WHERE id != ? ORDER BY name", (my_team_id,))
             for row in cur.fetchall():
                 teams_list.append({"id": row[0], "name": row[1], "manager": row[2]})
+            
+            # Get my current lineup (deduplicated, sorted by position)
+            cur.execute("SELECT MAX(week) FROM matchups")
+            current_week_result = cur.fetchone()
+            current_week = current_week_result[0] if current_week_result else 1
+            
+            cur.execute("""
+                SELECT p.name, p.position, p.team, p.bye_week, r.status
+                FROM rosters r
+                JOIN players p ON r.player_id = p.id
+                WHERE r.team_id = ? AND r.week = ?
+                GROUP BY p.name, p.position, p.team
+                ORDER BY 
+                    CASE p.position
+                        WHEN 'QB' THEN 1
+                        WHEN 'RB' THEN 2
+                        WHEN 'WR' THEN 3
+                        WHEN 'TE' THEN 4
+                        WHEN 'K' THEN 5
+                        WHEN 'DEF' THEN 6
+                        ELSE 7
+                    END,
+                    p.name
+            """, (my_team_id, current_week))
+            
+            for row in cur.fetchall():
+                my_lineup.append({
+                    "name": row[0],
+                    "position": row[1],
+                    "team": row[2] or "FA",
+                    "bye_week": row[3],
+                    "status": row[4] or "Active"
+                })
         except:
             pass
         finally:
@@ -98,6 +132,7 @@ def list_notifications(request: Request, kind: Optional[str] = None):
             "league_settings": settings_payload,
             "pending_recs": pending_count,
             "teams": teams_list,
+            "my_lineup": my_lineup,
         },
     )
 

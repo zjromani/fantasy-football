@@ -34,21 +34,46 @@
         </div>
         {% endif %}
       </div>
-      {% if league_settings.get("positional_limits") %}
-      <div class="mt-3 text-sm text-slate-600 flex flex-wrap gap-2">
-        <span class="bg-white px-2 py-1 rounded">QB {{ league_settings["positional_limits"]["qb"] }}</span>
-        <span class="bg-white px-2 py-1 rounded">RB {{ league_settings["positional_limits"]["rb"] }}</span>
-        <span class="bg-white px-2 py-1 rounded">WR {{ league_settings["positional_limits"]["wr"] }}</span>
-        <span class="bg-white px-2 py-1 rounded">TE {{ league_settings["positional_limits"]["te"] }}</span>
-        <span class="bg-white px-2 py-1 rounded">FLEX {{ league_settings["positional_limits"]["flex"] }}</span>
-        {% if league_settings["positional_limits"]["superflex"] and league_settings["positional_limits"]["superflex"] > 0 %}
-        <span class="bg-white px-2 py-1 rounded">SF {{ league_settings["positional_limits"]["superflex"] }}</span>
-        {% endif %}
+      
+      <!-- My Current Lineup -->
+      {% if my_lineup and my_lineup|length > 0 %}
+      <div class="mt-4 pt-4 border-t border-teal-200">
+        <h3 class="text-sm font-semibold text-slate-700 mb-3 flex items-center">
+          <svg class="w-4 h-4 mr-2 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+          </svg>
+          My Roster ({{ my_lineup|length }} players)
+        </h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 text-xs">
+          {% for player in my_lineup %}
+          <div class="bg-white rounded px-3 py-2 flex items-center justify-between border border-slate-200 hover:border-teal-300 transition">
+            <div class="flex items-center space-x-2 min-w-0 flex-1">
+              <span class="font-bold text-{{ 
+                'blue-600' if player.position == 'QB' else 
+                'green-600' if player.position == 'RB' else 
+                'orange-600' if player.position == 'WR' else 
+                'purple-600' if player.position == 'TE' else 
+                'pink-600' if player.position == 'K' else 
+                'slate-600' 
+              }} text-[10px] w-7 text-center">{{ player.position }}</span>
+              <div class="min-w-0 flex-1">
+                <div class="font-medium text-slate-900 truncate">{{ player.name }}</div>
+                <div class="text-slate-500">{{ player.team }}</div>
+              </div>
+            </div>
+            {% if player.status and player.status != 'Active' %}
+            <span class="ml-2 px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-semibold">{{ player.status }}</span>
+            {% elif player.bye_week %}
+            <span class="ml-2 text-slate-400 text-[10px]">BYE {{ player.bye_week }}</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
       </div>
       {% endif %}
     </div>
   </div>
-  
+
   <!-- Action Buttons -->
   <div class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-teal-200">
     <form method="post" action="/actions/gm_brief">
