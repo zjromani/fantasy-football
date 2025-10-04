@@ -222,6 +222,30 @@ def action_mark_all_read():
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/actions/optimize_lineup")
+def action_optimize_lineup():
+    """Generate lineup optimization recommendations."""
+    payload = latest_settings_payload() or {}
+    if not payload:
+        notify("info", "No settings", "Run 'Sync Yahoo Data' first to load league data.", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    
+    try:
+        raw = {"settings": payload}
+        settings = LeagueSettings.from_yahoo(raw)
+        
+        from .lineup_actions import run_lineup_optimizer_action
+        msg_id = run_lineup_optimizer_action(settings)
+        
+        if msg_id:
+            return RedirectResponse(url=f"/notifications/{msg_id}", status_code=status.HTTP_303_SEE_OTHER)
+        else:
+            return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception as e:
+        notify("info", "Optimizer error", f"Failed to optimize lineup: {e}", {})
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/approvals")
 def approvals(request: Request):
     recs = list_recommendations(status="pending")
