@@ -173,7 +173,7 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
         # Build explicit bye week info
         current_week = context.get('current_week', 1)
         players_on_bye_this_week = [
-            p['name'] for p in roster_detail 
+            p['name'] for p in roster_detail
             if p.get('bye_week') == current_week
         ]
         bye_info = f"\n\nPLAYERS ON BYE THIS WEEK ({current_week}): "
@@ -181,7 +181,7 @@ def build_gm_brief(settings: LeagueSettings) -> Tuple[str, str, Dict]:
             bye_info += ", ".join(players_on_bye_this_week)
         else:
             bye_info += "NONE - all players are available this week! ✅"
-        
+
         # Build prompt for OpenAI
         lineup_recs_text = ""
         if lineup_recommendations:
@@ -203,7 +203,7 @@ YOUR CURRENT ROSTER ({len(roster_detail)} players):
 {_json.dumps(roster_detail, indent=2)}
 Note: projected_pts shown where available (may be None if projections not configured)
 {bye_info}
-IMPORTANT: bye_week is the FUTURE week the player is on bye, NOT this week. 
+IMPORTANT: bye_week is the FUTURE week the player is on bye, NOT this week.
   Example: If current week is 5 and player has bye_week=8, they are AVAILABLE this week.
 {lineup_recs_text}
 
