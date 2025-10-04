@@ -519,6 +519,16 @@ def action_scouting_report(opponent_team_id: str = Form(...)):
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/actions/find_trades")
+def action_find_trades():
+    """
+    GM scans all teams and finds best trade opportunities.
+    Owner just clicks one button - GM does all the analysis.
+    """
+    notify("info", "Trade Finder Coming Soon", "GM will scan all teams, analyze manager tendencies from past transactions, and present the best trade opportunities. Backend implementation in progress.", {})
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.post("/actions/approve_waiver")
 def action_approve_waiver(add_player_id: str = Form(...), drop_player_id: Optional[str] = Form(None), bid_amount: Optional[float] = Form(0)):
     # Attempt Yahoo write; if not configured, just post a confirmation
