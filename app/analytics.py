@@ -264,7 +264,7 @@ def calculate_team_power(
             FROM teams
             WHERE id = ?
         """, (team_id,))
-        
+
         record_row = cur.fetchone()
         wins = int(record_row[0] or 0) if record_row else 0
         losses = int(record_row[1] or 0) if record_row else 0

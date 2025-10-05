@@ -131,6 +131,8 @@ def ingest(client: YahooClient, league_key: str, *, cache_dir: Optional[str] = N
 def persist_bundle(bundle: Dict[str, Any]) -> None:
     # Defensive parsing; if shapes are unexpected, skip rather than error
     import json as _json
+    
+    print(f"[PERSIST] Bundle keys: {list(bundle.keys())}")
 
     # First, clear old roster data for the current week to ensure fresh data
     from .db import get_connection
@@ -214,6 +216,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
         return []
 
     # Teams
+    print("[PERSIST] Processing teams...")
     teams = bundle.get("teams")
     if isinstance(teams, list):
         for t in teams:
@@ -281,6 +284,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                 upsert_player(player_id=pid, name=str(name).strip(), position=str(pos) if pos else None, team=str(team) if team else None, bye_week=int(bye) if bye else None)
 
     # Rosters
+    print("[PERSIST] Processing rosters...")
     rosters = bundle.get("rosters")
     if isinstance(rosters, list):
         for r in rosters:
@@ -350,6 +354,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                     upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
 
     # My Roster (with actual lineup positions)
+    print("[PERSIST] Processing my_roster...")
     my_roster = bundle.get("my_roster")
     if isinstance(my_roster, dict):
         try:
@@ -444,13 +449,13 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                         team_b = _flatten_yahoo_list(team_b_list)
                         a_id = str(team_a.get("team_id") or team_a.get("team_key") or "")
                         b_id = str(team_b.get("team_id") or team_b.get("team_key") or "")
-                        
+
                         # Extract scores and results
                         a_projected = team_a.get("team_projected_points", {}).get("total") if isinstance(team_a.get("team_projected_points"), dict) else None
                         a_actual = team_a.get("team_points", {}).get("total") if isinstance(team_a.get("team_points"), dict) else None
                         b_projected = team_b.get("team_projected_points", {}).get("total") if isinstance(team_b.get("team_projected_points"), dict) else None
                         b_actual = team_b.get("team_points", {}).get("total") if isinstance(team_b.get("team_points"), dict) else None
-                        
+
                         # Determine result if scores are available
                         a_result = None
                         b_result = None
@@ -469,7 +474,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                                     b_result = "T"
                             except (ValueError, TypeError):
                                 pass
-                        
+
                         # Convert to float if present
                         try:
                             a_projected = float(a_projected) if a_projected is not None else None
@@ -478,14 +483,16 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                             b_actual = float(b_actual) if b_actual is not None else None
                         except (ValueError, TypeError):
                             pass
-                        
+
                         if week and a_id and b_id:
                             upsert_matchup(week=week, team_id=a_id, opponent_id=b_id, projected=a_projected, actual=a_actual, result=a_result)
                             upsert_matchup(week=week, team_id=b_id, opponent_id=a_id, projected=b_projected, actual=b_actual, result=b_result)
 
     # Standings - extract cumulative win/loss records
     standings_data = bundle.get("standings")
+    print(f"[STANDINGS] Processing standings data: {standings_data is not None}")
     if isinstance(standings_data, dict):
+        print("[STANDINGS] Standings data is dict, processing...")
         try:
             fc = standings_data.get("fantasy_content", {})
             league = fc.get("league", [])
@@ -497,10 +504,10 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                         team_list = team_wrap.get("team") if isinstance(team_wrap, dict) else None
                         if not isinstance(team_list, list):
                             continue
-                        
+
                         team = _flatten_yahoo_list(team_list)
                         team_id = str(team.get("team_id") or "")
-                        
+
                         # Extract standings data
                         standings_info = team.get("team_standings", {})
                         if isinstance(standings_info, dict) and team_id:
@@ -511,26 +518,32 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                                     losses = int(outcome.get("losses", 0))
                                     points_for = float(standings_info.get("points_for", 0.0))
                                     points_against = float(standings_info.get("points_against", 0.0))
-                                    
+
                                     # Update team standings in database
                                     from .store import upsert_team
                                     team_name = str(team.get("name", ""))
-                                    manager = str(team.get("managers", [{}])[0].get("manager", {}).get("nickname", "")) if team.get("managers") else None
-                                    
+
+                                    # Skip manager extraction - let existing team data provide it
+                                    # The _flatten_yahoo_list doesn't preserve managers correctly
+
                                     upsert_team(
                                         team_id=team_id,
                                         name=team_name,
-                                        manager=manager,
+                                        manager=None,  # Don't overwrite existing manager
                                         wins=wins,
                                         losses=losses,
                                         points_for=points_for,
                                         points_against=points_against
                                     )
-                                    print(f"[STANDINGS] Updated team {team_id}: {wins}-{losses}, PF: {points_for:.2f}, PA: {points_against:.2f}")
+                                    print(f"[STANDINGS] Updated team {team_id} ({team_name}): {wins}-{losses}, PF: {points_for:.2f}, PA: {points_against:.2f}")
                                 except (ValueError, TypeError) as e:
                                     print(f"[STANDINGS] Warning: Could not parse standings for team {team_id}: {e}")
+                                    import traceback
+                                    traceback.print_exc()
         except Exception as e:
             print(f"[INGEST] Warning: Could not process standings: {e}")
+            import traceback
+            traceback.print_exc()
 
     # Transactions
     txs = bundle.get("transactions")

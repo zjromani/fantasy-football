@@ -72,7 +72,7 @@ def migrate() -> None:
             );
             """
         )
-        
+
         # Migration: Add wins/losses columns if they don't exist
         # Check if columns exist and add them
         try:
