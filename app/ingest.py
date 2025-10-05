@@ -131,8 +131,10 @@ def ingest(client: YahooClient, league_key: str, *, cache_dir: Optional[str] = N
 def persist_bundle(bundle: Dict[str, Any]) -> None:
     # Defensive parsing; if shapes are unexpected, skip rather than error
     import json as _json
-    
+
     print(f"[PERSIST] Bundle keys: {list(bundle.keys())}")
+    print(f"[PERSIST] Bundle rosters type: {type(bundle.get('rosters'))}")
+    print(f"[PERSIST] Bundle rosters content: {str(bundle.get('rosters'))[:200] if bundle.get('rosters') else 'None'}")
 
     # First, clear old roster data for the current week to ensure fresh data
     from .db import get_connection
@@ -218,37 +220,62 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
     # Teams
     print("[PERSIST] Processing teams...")
     teams = bundle.get("teams")
+    print(f"[PERSIST] Teams type: {type(teams)}, is list: {isinstance(teams, list)}")
     if isinstance(teams, list):
-        for t in teams:
+        print(f"[PERSIST] Teams list length: {len(teams)}")
+        for i, t in enumerate(teams):
             if not isinstance(t, dict):
+                print(f"[PERSIST] Team {i} is not dict: {type(t)}")
                 continue
-            tid = str(t.get("team_id") or t.get("id") or t.get("team_key") or "")
-            name = t.get("name") or (t.get("team") or {}).get("name") or tid
-            if isinstance(name, dict):
-                name = name.get("full") or name.get("display") or tid
-            manager = (t.get("managers") or [{}])[0].get("nickname") if isinstance(t.get("managers"), list) else None
-            abbrev = (t.get("team") or {}).get("abbr") or t.get("abbrev")
-            if tid and name:
-                upsert_team(team_id=tid, name=str(name), manager=manager, abbrev=abbrev)
+            try:
+                tid = str(t.get("team_id") or t.get("id") or t.get("team_key") or "")
+                name = t.get("name") or (t.get("team") or {}).get("name") or tid
+                if isinstance(name, dict):
+                    name = name.get("full") or name.get("display") or tid
+                manager = (t.get("managers") or [{}])[0].get("nickname") if isinstance(t.get("managers"), list) else None
+                abbrev = (t.get("team") or {}).get("abbr") or t.get("abbrev")
+                if tid and name:
+                    upsert_team(team_id=tid, name=str(name), manager=manager, abbrev=abbrev)
+                    print(f"[PERSIST] Upserted team {i}: {tid} - {name}")
+            except Exception as e:
+                print(f"[PERSIST] Error processing team {i}: {e}")
+                import traceback
+                traceback.print_exc()
     elif isinstance(teams, dict):
-        # Parse Yahoo structure: fantasy_content.league.teams
-        for team_wrap in _extract_items(teams, "fantasy_content", "league", "teams"):
-            # team_wrap = {"team": [[{team_key: ...}, {team_id: ...}, ...]]}
-            team_list = team_wrap.get("team") if isinstance(team_wrap, dict) else None
-            if not isinstance(team_list, list):
-                continue
-            team = _flatten_yahoo_list(team_list)
-            tid = str(team.get("team_id") or team.get("team_key") or "")
-            name = team.get("name", "")
-            manager = None
-            if isinstance(team.get("managers"), list) and team["managers"]:
-                mgr_wrap = team["managers"][0]
-                if isinstance(mgr_wrap, dict):
-                    mgr = mgr_wrap.get("manager", {})
-                    manager = mgr.get("nickname") or mgr.get("guid")
-            abbrev = None
-            if tid and name:
-                upsert_team(team_id=tid, name=str(name), manager=manager, abbrev=abbrev)
+        print("[PERSIST] Teams is dict, parsing Yahoo structure...")
+        try:
+            # Parse Yahoo structure: fantasy_content.league.teams
+            team_items = _extract_items(teams, "fantasy_content", "league", "teams")
+            print(f"[PERSIST] Found {len(team_items)} team items")
+            for i, team_wrap in enumerate(team_items):
+                print(f"[PERSIST] Processing team {i}")
+                try:
+                    # team_wrap = {"team": [[{team_key: ...}, {team_id: ...}, ...]]}
+                    team_list = team_wrap.get("team") if isinstance(team_wrap, dict) else None
+                    if not isinstance(team_list, list):
+                        continue
+                    team = _flatten_yahoo_list(team_list)
+                    tid = str(team.get("team_id") or team.get("team_key") or "")
+                    name = team.get("name", "")
+                    manager = None
+                    if isinstance(team.get("managers"), list) and team["managers"]:
+                        mgr_wrap = team["managers"][0]
+                        if isinstance(mgr_wrap, dict):
+                            mgr = mgr_wrap.get("manager", {})
+                            manager = mgr.get("nickname") or mgr.get("guid")
+                    abbrev = None
+                    if tid and name:
+                        upsert_team(team_id=tid, name=str(name), manager=manager, abbrev=abbrev)
+                        print(f"[PERSIST] Upserted team {i}: {tid} - {name}")
+                except Exception as e:
+                    print(f"[PERSIST] Error processing team {i}: {e}")
+                    import traceback
+                    traceback.print_exc()
+        except Exception as e:
+            print(f"[PERSIST] Error in teams processing: {e}")
+            import traceback
+            traceback.print_exc()
+    print("[PERSIST] Teams processing complete")
 
     # Players
     players = bundle.get("players")
@@ -286,7 +313,9 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
     # Rosters
     print("[PERSIST] Processing rosters...")
     rosters = bundle.get("rosters")
+    print(f"[PERSIST] Rosters type: {type(rosters)}, is list: {isinstance(rosters, list)}")
     if isinstance(rosters, list):
+        print(f"[PERSIST] Rosters list length: {len(rosters)}")
         for r in rosters:
             if not isinstance(r, dict):
                 continue
@@ -352,6 +381,7 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                 status = player.get("status")
                 if team_id and pid and week:
                     upsert_roster(team_id=team_id, player_id=pid, week=week, status=status, slot=slot)
+    print("[PERSIST] Rosters processing complete")
 
     # My Roster (with actual lineup positions)
     print("[PERSIST] Processing my_roster...")
