@@ -230,5 +230,75 @@ def get_player_projection(player_name: str, week: int, position: Optional[str] =
     return None
 
 
-__all__ = ["PlayerProjection", "get_projections", "get_player_projection"]
+def load_projections_from_csv(csv_content: str, week: int, source: str = "csv") -> List[PlayerProjection]:
+    """
+    Load projections from CSV content.
+
+    Expected CSV format (header required):
+    player_name,position,team,fantasy_points_ppr,fantasy_points_half_ppr,fantasy_points_standard
+
+    Example:
+    player_name,position,team,fantasy_points_ppr
+    Patrick Mahomes,QB,KC,22.5
+    Travis Kelce,TE,KC,14.2
+
+    Args:
+        csv_content: Raw CSV string content
+        week: NFL week number
+        source: Source identifier for tracking
+
+    Returns:
+        List of PlayerProjection objects
+    """
+    import csv
+    from io import StringIO
+
+    projections = []
+    reader = csv.DictReader(StringIO(csv_content))
+
+    for row in reader:
+        try:
+            proj = PlayerProjection(
+                player_name=row.get("player_name", "").strip(),
+                position=row.get("position", "").strip().upper(),
+                team=row.get("team", "").strip().upper(),
+                week=week,
+                fantasy_points_ppr=float(row["fantasy_points_ppr"]) if row.get("fantasy_points_ppr") else None,
+                fantasy_points_half_ppr=float(row["fantasy_points_half_ppr"]) if row.get("fantasy_points_half_ppr") else None,
+                fantasy_points_standard=float(row["fantasy_points_standard"]) if row.get("fantasy_points_standard") else None,
+                pass_yds=float(row["pass_yds"]) if row.get("pass_yds") else None,
+                pass_tds=float(row["pass_tds"]) if row.get("pass_tds") else None,
+                rush_yds=float(row["rush_yds"]) if row.get("rush_yds") else None,
+                rush_tds=float(row["rush_tds"]) if row.get("rush_tds") else None,
+                receptions=float(row["receptions"]) if row.get("receptions") else None,
+                rec_yds=float(row["rec_yds"]) if row.get("rec_yds") else None,
+                rec_tds=float(row["rec_tds"]) if row.get("rec_tds") else None,
+                source=source,
+                fetched_at=datetime.now(timezone.utc),
+            )
+            if proj.player_name:
+                projections.append(proj)
+        except (ValueError, KeyError) as e:
+            print(f"[PROJECTIONS] Skipping row due to error: {e}")
+            continue
+
+    return projections
+
+
+def save_projections_to_cache(projections: List[PlayerProjection], week: int) -> None:
+    """Save uploaded projections to cache for use by the system."""
+    if not projections:
+        return
+    cache = ProjectionsCache()
+    cache.set(week, projections, position=None)
+    print(f"[PROJECTIONS] Cached {len(projections)} projections for week {week}")
+
+
+__all__ = [
+    "PlayerProjection",
+    "get_projections",
+    "get_player_projection",
+    "load_projections_from_csv",
+    "save_projections_to_cache",
+]
 

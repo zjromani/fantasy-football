@@ -21,7 +21,7 @@ from .store import record_snapshot, list_recommendations, set_recommendation_sta
 from .config import get_settings
 from .utils import normalize_league_key
 from .news import fetch_all_news
-from .projections import get_projections
+from .projections import get_projections, load_projections_from_csv, save_projections_to_cache
 from .scouting import post_scouting_report, get_next_opponent
 
 
@@ -55,7 +55,7 @@ def api_news(limit: int = 30):
 
 @app.get("/api/projections")
 def api_projections(week: int, position: Optional[str] = None):
-    """Get weekly player projections from FantasyPros."""
+    """Get weekly player projections."""
     from fastapi.responses import JSONResponse
     projections = get_projections(week, position, use_cache=True, max_age_hours=24)
     return JSONResponse({
@@ -63,6 +63,42 @@ def api_projections(week: int, position: Optional[str] = None):
         "position": position,
         "count": len(projections),
         "projections": [p.to_dict() for p in projections[:100]]  # Limit response size
+    })
+
+
+@app.post("/api/projections/upload")
+async def upload_projections(request: Request, week: int):
+    """
+    Upload projections via CSV.
+
+    CSV format (header required):
+    player_name,position,team,fantasy_points_ppr
+
+    Example curl:
+    curl -X POST "http://localhost:8000/api/projections/upload?week=1" \
+         -H "Content-Type: text/csv" \
+         --data-binary @projections.csv
+    """
+    from fastapi.responses import JSONResponse
+
+    body = await request.body()
+    csv_content = body.decode("utf-8")
+
+    if not csv_content.strip():
+        raise HTTPException(status_code=400, detail="Empty CSV content")
+
+    projections = load_projections_from_csv(csv_content, week, source="upload")
+
+    if not projections:
+        raise HTTPException(status_code=400, detail="No valid projections found in CSV")
+
+    save_projections_to_cache(projections, week)
+
+    return JSONResponse({
+        "status": "ok",
+        "week": week,
+        "count": len(projections),
+        "message": f"Loaded {len(projections)} projections for week {week}"
     })
 
 

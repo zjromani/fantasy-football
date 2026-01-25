@@ -53,6 +53,32 @@ class EnhancedWaiverRecommendation:
         return self.add_projection
 
 
+# Elite players that should never be dropped, even when injured
+# These are typically top-10 at their position with high ROS value
+PROTECTED_PLAYERS = {
+    # Elite QBs
+    "josh allen", "lamar jackson", "jalen hurts", "patrick mahomes", "joe burrow",
+    "cj stroud", "dak prescott", "tua tagovailoa", "jayden daniels",
+    # Elite RBs
+    "christian mccaffrey", "breece hall", "bijan robinson", "jahmyr gibbs",
+    "saquon barkley", "derrick henry", "jonathan taylor", "de'von achane",
+    "kyren williams", "isiah pacheco", "josh jacobs", "james cook",
+    # Elite WRs
+    "ja'marr chase", "ceedee lamb", "tyreek hill", "amon-ra st. brown",
+    "nico collins", "garrett wilson", "a.j. brown", "davante adams",
+    "chris olave", "drake london", "mike evans", "deebo samuel",
+    "marvin harrison jr.", "malik nabers", "cooper kupp", "puka nacua",
+    # Elite TEs
+    "travis kelce", "sam laporte", "mark andrews", "trey mcbride",
+    "george kittle", "dalton kincaid", "tj hockenson", "david njoku",
+}
+
+
+def is_protected_player(player_name: str) -> bool:
+    """Check if a player is protected from being dropped."""
+    return player_name.lower().strip() in PROTECTED_PLAYERS
+
+
 def get_my_roster(week: int) -> List[Dict]:
     """Get user's current roster from database."""
     cfg = get_settings()
@@ -206,10 +232,14 @@ def analyze_waivers_enhanced(
             continue
 
         # Find best drop candidate (lowest projected bench player at same position)
+        # Exclude protected players (elite players that shouldn't be dropped even when injured)
         drop_candidate = None
         drop_projection = None
 
-        bench_at_position = [p for p in bench_players if p["position"] == position]
+        bench_at_position = [
+            p for p in bench_players
+            if p["position"] == position and not is_protected_player(p["name"])
+        ]
         if bench_at_position:
             # Get projections for bench players
             bench_with_proj = []
@@ -408,5 +438,7 @@ __all__ = [
     "EnhancedWaiverRecommendation",
     "analyze_waivers_enhanced",
     "post_enhanced_waivers_to_inbox",
+    "PROTECTED_PLAYERS",
+    "is_protected_player",
 ]
 
