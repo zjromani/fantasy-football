@@ -550,7 +550,6 @@ def persist_bundle(bundle: Dict[str, Any]) -> None:
                                     points_against = float(standings_info.get("points_against", 0.0))
 
                                     # Update team standings in database
-                                    from .store import upsert_team
                                     team_name = str(team.get("name", ""))
 
                                     # Skip manager extraction - let existing team data provide it

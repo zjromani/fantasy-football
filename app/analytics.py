@@ -341,24 +341,20 @@ def find_trade_opportunities(
     opportunities = []
 
     # Identify my strengths (A/B grades) and weaknesses (D/F grades)
+    # Exclude FLEX from weakness analysis since it's filled from RB/WR/TE
     my_strengths = [pos for pos, grade in my_team.positional_grades.items() if grade.grade in ["A", "B"]]
-    my_weaknesses = [pos for pos, grade in my_team.positional_grades.items() if grade.grade in ["D", "F"]]
-    
-    print(f"[TRADE_DEBUG] My team: {my_team.team_name} (rank {my_team.rank})")
-    print(f"[TRADE_DEBUG] My strengths: {my_strengths}")
-    print(f"[TRADE_DEBUG] My weaknesses: {my_weaknesses}")
-    print(f"[TRADE_DEBUG] Total teams to evaluate: {len(all_teams)}")
+    my_weaknesses = [pos for pos, grade in my_team.positional_grades.items() if grade.grade in ["D", "F"] and pos != "FLEX"]
+
 
     for team in all_teams:
         if team.team_id == my_team.team_id:
             continue
 
         # Identify their weaknesses (what I can exploit)
-        their_weaknesses = [pos for pos, grade in team.positional_grades.items() if grade.grade in ["D", "F"]]
+        # Exclude FLEX from weakness analysis since it's filled from RB/WR/TE
+        their_weaknesses = [pos for pos, grade in team.positional_grades.items() if grade.grade in ["D", "F"] and pos != "FLEX"]
         their_strengths = [pos for pos, grade in team.positional_grades.items() if grade.grade in ["A", "B"]]
-        
-        print(f"[TRADE_DEBUG] Team: {team.team_name} (rank {team.rank}, {team.wins}-{team.losses}, desperation: {team.desperation_score})")
-        print(f"[TRADE_DEBUG] Their strengths: {their_strengths}, weaknesses: {their_weaknesses}")
+
 
         # Find complementary positions (my strength = their weakness AND vice versa)
         complementary = []
@@ -369,8 +365,9 @@ def find_trade_opportunities(
         # What they can give me (their strength = my weakness)
         their_surplus = [pos for pos in their_strengths if pos in my_weaknesses]
 
-        if not my_surplus and not their_surplus:
-            continue  # No natural fit
+        # If no complementary needs, still consider high-desperation teams
+        if not my_surplus and not their_surplus and team.desperation_score < 5.0:
+            continue  # No natural fit and not desperate enough
 
         complementary = my_surplus + their_surplus
 
@@ -403,6 +400,10 @@ def find_trade_opportunities(
 
         if their_surplus:
             reasons.append(f"strong at {', '.join(their_surplus)} (you need help)")
+
+        # If no complementary needs but high desperation, mention general trade potential
+        if not my_surplus and not their_surplus and team.desperation_score >= 5.0:
+            reasons.append("highly motivated to make deals")
 
         reason = "; ".join(reasons) if reasons else "Moderate trade fit"
 
@@ -439,7 +440,6 @@ def league_health_snapshot(
     Returns:
         LeagueSnapshot with all team health metrics and rankings
     """
-    print(f"[LEAGUE_DEBUG] Starting league_health_snapshot with my_team_id: {my_team_id}")
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -468,16 +468,8 @@ def league_health_snapshot(
         trade_opps = []
         if my_team_id:
             my_team = next((t for t in sorted_teams if t.team_id == my_team_id), None)
-            print(f"[LEAGUE_DEBUG] My team ID: {my_team_id}")
-            print(f"[LEAGUE_DEBUG] My team found: {my_team is not None}")
             if my_team:
-                print(f"[LEAGUE_DEBUG] Calling find_trade_opportunities...")
                 trade_opps = find_trade_opportunities(my_team, sorted_teams, top_n=5)
-                print(f"[LEAGUE_DEBUG] Trade opportunities found: {len(trade_opps) if trade_opps else 0}")
-            else:
-                print(f"[LEAGUE_DEBUG] My team not found in sorted_teams")
-        else:
-            print(f"[LEAGUE_DEBUG] No my_team_id provided")
 
         return LeagueSnapshot(
             current_week=current_week,
