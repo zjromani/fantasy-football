@@ -338,6 +338,39 @@ print("Inbox message:", msg_id)
 PY
 ```
 
+### Automated Scheduling (macOS only)
+
+The app includes launchd jobs for hands-off automation:
+
+**Install:**
+```bash
+cd launchd && ./install.sh
+```
+
+**Verify:**
+```bash
+launchctl list | grep fantasy
+```
+
+**Schedule:**
+- `ai_morning`: Daily at 7:00 AM - Sync data and post daily brief
+- `ai_tuesday`: Tuesday at 6:00 AM - Analyze waivers (auto-execute if autopilot enabled)
+- `ai_gameday`: Sunday at 10:00 AM - Optimize lineup for game day
+
+**Logs:**
+```bash
+tail -f logs/ai-morning.log
+tail -f logs/ai-tuesday.log
+tail -f logs/ai-gameday.log
+```
+
+**Uninstall:**
+```bash
+cd launchd && ./uninstall.sh
+```
+
+**Note:** Jobs use the virtualenv at `.venv/bin/python` automatically. Ensure AI_AUTOPILOT and thresholds are configured in `.env` before enabling.
+
 ### Approvals and autopilot
 - By default the Agent asks for approval in the Inbox before writes.
 - Set `AI_AUTOPILOT=true` to allow auto-execution for actions that meet thresholds.
