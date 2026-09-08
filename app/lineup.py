@@ -1,116 +1,119 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
 
-from .models import LeagueSettings
+from .domain import Projection, RosterPlayer
+from .league import LeagueConfig
 
 
-@dataclass
-class ProposedSwap:
-    out_player_id: str
-    in_player_id: str
-    reason: str
-    delta_points: float
+@dataclass(frozen=True)
+class LineupPlan:
+    positions: dict[str, str]
+    projected_points: float
+    current_projected_points: float
+
+    @property
+    def delta(self) -> float:
+        return round(self.projected_points - self.current_projected_points, 2)
 
 
 def optimize_lineup(
-    *,
-    settings: LeagueSettings,
-    candidates: List[Dict],  # each: {id, position, projected, injury, is_bye, tier}
-    current_starters: Dict[str, List[str]],  # slot -> list of player ids
-    delta_threshold_for_tier1: float = 3.0,
-) -> List[ProposedSwap]:
-    # Simple heuristic: for each slot capacity, ensure highest projected non-bye, non-D/Q over injured
-    swaps: List[ProposedSwap] = []
+    league: LeagueConfig,
+    roster: list[RosterPlayer],
+    projections: dict[str, Projection],
+) -> LineupPlan:
+    starter_slots = []
+    for slot, count in league.roster.items():
+        if slot not in {"BN", "IR"}:
+            starter_slots.extend([slot] * count)
 
-    # Build pool by slot
-    by_slot: Dict[str, List[Dict]] = {}
-    for p in candidates:
-        for slot in _eligible_slots(p["position"], settings):
-            by_slot.setdefault(slot, []).append(p)
-
-    # Apply filters
-    for slot, players in by_slot.items():
-        players.sort(key=lambda x: float(x.get("projected", 0.0)), reverse=True)
-
-    # Enforce starters per positional limits
-    limits = settings.positional_limits
-    targets = {
-        "QB": limits.qb,
-        "RB": limits.rb,
-        "WR": limits.wr,
-        "TE": limits.te,
-        "FLEX": limits.flex,
-        "SUPERFLEX": limits.superflex,
+    locked_positions = {
+        player.player_key: player.selected_position
+        for player in roster
+        if player.locked and player.selected_position not in {"BN", "IR"}
     }
+    available_slots = list(starter_slots)
+    for position in locked_positions.values():
+        available_slots.remove(position)
 
-    for slot, required in targets.items():
-        if required <= 0:
-            continue
-        pool = [p for p in by_slot.get(slot, []) if not p.get("is_bye")]
-        # avoid Q/D unless small delta
-        def ok(p):
-            injury = str(p.get("injury", "")).upper()
-            return injury not in {"D", "OUT"}
+    candidates = [
+        player
+        for player in roster
+        if not player.locked and _can_start(projections.get(player.player_key))
+    ]
+    best_score = float("-inf")
+    best_positions: dict[str, str] = {}
 
-        chosen = []
-        for p in pool:
-            if len(chosen) >= required:
-                break
-            if ok(p) or not chosen:
-                chosen.append(p)
+    def assign(
+        index: int,
+        remaining: list[RosterPlayer],
+        positions: dict[str, str],
+        score: float,
+    ) -> None:
+        nonlocal best_score, best_positions
+        if index == len(available_slots):
+            if score > best_score:
+                best_score = score
+                best_positions = dict(positions)
+            return
+        slot = available_slots[index]
+        for player in remaining:
+            if _eligible(player, slot):
+                projection = projections[player.player_key]
+                positions[player.player_key] = slot
+                assign(
+                    index + 1,
+                    [candidate for candidate in remaining if candidate != player],
+                    positions,
+                    score + projection.week_points,
+                )
+                positions.pop(player.player_key)
 
-        # Determine swaps vs current starters
-        current = set(current_starters.get(slot, []))
-        chosen_ids = {p["id"] for p in chosen}
-        to_add = chosen_ids - current
-        to_remove = current - chosen_ids
-        for add_id in to_add:
-            add = _find(candidates, add_id)
-            # pick a remove with lowest projection
-            rem_id = None
-            rem_proj = 1e9
-            for cid in current:
-                cp = _find(candidates, cid)
-                if cp and cp.get("projected", 0) < rem_proj:
-                    rem_proj = cp.get("projected", 0)
-                    rem_id = cid
-            if add and rem_id:
-                add_proj = float(add.get("projected", 0))
-                delta = add_proj - float(rem_proj if rem_proj != 1e9 else 0)
-                # never bench tier-1 unless delta>N
-                if _is_tier1(rem_id, candidates) and delta < delta_threshold_for_tier1:
-                    continue
-                reason = f"{slot}: +{add_id} over {rem_id} (Δ {delta:.1f})"
-                swaps.append(ProposedSwap(out_player_id=rem_id, in_player_id=add_id, reason=reason, delta_points=delta))
+    locked_score = sum(
+        projections[key].week_points for key in locked_positions if key in projections
+    )
+    assign(0, candidates, {}, locked_score)
+    if best_score == float("-inf"):
+        raise ValueError("No legal complete lineup is available")
 
-    swaps.sort(key=lambda s: s.delta_points, reverse=True)
-    return swaps
-
-
-def _eligible_slots(position: str, settings: LeagueSettings) -> List[str]:
-    pos = position.upper()
-    slots = [pos]
-    if pos in {"RB", "WR", "TE"} and settings.positional_limits.flex > 0:
-        slots.append("FLEX")
-    if pos in {"QB", "RB", "WR", "TE"} and settings.positional_limits.superflex > 0:
-        slots.append("SUPERFLEX")
-    return slots
-
-
-def _find(candidates: List[Dict], pid: str) -> Dict:
-    for c in candidates:
-        if c["id"] == pid:
-            return c
-    return {}
-
-
-def _is_tier1(pid: str, candidates: List[Dict]) -> bool:
-    c = _find(candidates, pid)
-    return str(c.get("tier", "")).lower() == "tier-1"
+    positions = {
+        player.player_key: (
+            player.selected_position
+            if player.locked or player.selected_position == "IR"
+            else "BN"
+        )
+        for player in roster
+    }
+    positions.update(locked_positions)
+    positions.update(best_positions)
+    current_score = sum(
+        projections[player.player_key].week_points
+        for player in roster
+        if player.selected_position not in {"BN", "IR"}
+        and player.player_key in projections
+        and _can_start(projections[player.player_key])
+    )
+    return LineupPlan(positions, round(best_score, 2), round(current_score, 2))
 
 
-__all__ = ["optimize_lineup", "ProposedSwap"]
+def _can_start(projection: Projection | None) -> bool:
+    return bool(
+        projection
+        and projection.is_active
+        and projection.injury_status.upper() not in {"OUT", "IR", "PUP", "SUSP"}
+        and projection.bye_week is None
+    )
 
 
+def _eligible(player: RosterPlayer, slot: str) -> bool:
+    eligible = set(player.eligible_positions)
+    if slot in eligible:
+        return True
+    if slot == "W/R/T":
+        return bool(eligible & {"WR", "RB", "TE"})
+    if slot == "D":
+        return bool(eligible & {"D", "DB", "DL", "LB", "S", "CB", "DE", "DT"})
+    return False
+
+
+__all__ = ["LineupPlan", "optimize_lineup"]

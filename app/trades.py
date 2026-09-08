@@ -1,228 +1,86 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
-from typing import Dict, List, Tuple
 
-from .models import LeagueSettings
-from .inbox import notify
+from .domain import Projection
 
 
-@dataclass
-class Player:
-    id: str
-    name: str
-    position: str
-    proj_next3: float  # total projected points next 3 weeks if starting
-    playoff_proj: float  # total projected Weeks 15-17
-    bye_next3: int  # number of byes in next 3
-    injury: str = ""
-    volatility: float = 0.0  # higher is riskier
-
-
-@dataclass
-class TeamState:
-    team_id: str
-    starters_by_slot: Dict[str, int]  # required starters per slot
-    bench_redundancy: Dict[str, int]  # counts by pos
-    bye_exposure: int  # projected zeros next 3 weeks
-    injuries: int
-    schedule_difficulty: float  # 0 easy .. 3 hard
-    manager_profile: Dict
-    roster: List[Player]
-
-
-@dataclass
-class TradeProposal:
-    offer_from: str
-    offer_to: str
-    send: List[str]  # player ids from offer_from
-    receive: List[str]  # player ids going to offer_from
+@dataclass(frozen=True)
+class TradePackage:
+    send_player_keys: tuple[str, ...]
+    receive_player_keys: tuple[str, ...]
+    ros_delta: float
+    playoff_delta: float
+    structural_delta: float
+    risk_delta: float
     score: float
-    rationale: str
-    acceptance_odds: float | None = None
-    both_sides_gain: float | None = None
+
+    @property
+    def eligible(self) -> bool:
+        return (
+            self.ros_delta > 0
+            and self.playoff_delta >= -2
+            and self.structural_delta >= 0
+            and self.risk_delta <= 2
+        )
 
 
-def _need_score(state: TeamState) -> Dict[str, float]:
-    # Simple needs: if bench redundancy low and required starters high, higher need
-    need: Dict[str, float] = {}
-    for pos, req in state.starters_by_slot.items():
-        redundancy = state.bench_redundancy.get(pos, 0)
-        need[pos] = max(0.0, req - redundancy * 0.7)
-    return need
+def evaluate_trade(
+    *,
+    send: list[Projection],
+    receive: list[Projection],
+    roster_need: dict[str, float],
+) -> TradePackage:
+    ros_delta = sum(player.ros_points for player in receive) - sum(
+        player.ros_points for player in send
+    )
+    playoff_delta = sum(player.playoff_points for player in receive) - sum(
+        player.playoff_points for player in send
+    )
+    structural_delta = sum(
+        roster_need.get(_need_position(player.position), 0) for player in receive
+    ) - sum(roster_need.get(_need_position(player.position), 0) for player in send)
+    risk_delta = sum(player.volatility for player in receive) - sum(
+        player.volatility for player in send
+    )
+    score = ros_delta + playoff_delta * 0.5 + structural_delta * 2 - risk_delta
+    return TradePackage(
+        send_player_keys=tuple(player.player_key for player in send),
+        receive_player_keys=tuple(player.player_key for player in receive),
+        ros_delta=round(ros_delta, 2),
+        playoff_delta=round(playoff_delta, 2),
+        structural_delta=round(structural_delta, 2),
+        risk_delta=round(risk_delta, 2),
+        score=round(score, 2),
+    )
 
 
-def _player_value_for_team(player: Player, state: TeamState, pos_need: float) -> float:
-    base = player.proj_next3
-    bye_penalty = 3.0 * player.bye_next3
-    injury_penalty = 2.0 if player.injury.upper() in {"D", "OUT"} else 1.0 if player.injury.upper() == "Q" else 0.0
-    vol_penalty = player.volatility
-    schedule_impact = -1.0 * state.schedule_difficulty
-    need_bonus = 2.0 * pos_need
-    return round(base - bye_penalty - injury_penalty - vol_penalty + schedule_impact + need_bonus, 2)
-
-
-def _trade_delta_for_teams(a: TeamState, b: TeamState, send_from_a: List[Player], send_from_b: List[Player]) -> Tuple[float, float]:
-    need_a = _need_score(a)
-    need_b = _need_score(b)
-    # Value leaving and incoming
-    out_a = sum(_player_value_for_team(p, a, need_a.get(p.position, 0.0)) for p in send_from_a)
-    in_a = sum(_player_value_for_team(p, a, need_a.get(p.position, 0.0)) for p in send_from_b)
-    out_b = sum(_player_value_for_team(p, b, need_b.get(p.position, 0.0)) for p in send_from_b)
-    in_b = sum(_player_value_for_team(p, b, need_b.get(p.position, 0.0)) for p in send_from_a)
-
-    delta_a = in_a - out_a
-    delta_b = in_b - out_b
-
-    # BYE relief credit if removes projected zero
-    bye_relief_a = 2.5 if a.bye_exposure > 0 and any(p.bye_next3 == 0 for p in send_from_b) else 0.0
-    bye_relief_b = 2.5 if b.bye_exposure > 0 and any(p.bye_next3 == 0 for p in send_from_a) else 0.0
-
-    # Playoff bonus
-    playoff_a = 0.5 * sum(p.playoff_proj for p in send_from_b) - 0.5 * sum(p.playoff_proj for p in send_from_a)
-    playoff_b = 0.5 * sum(p.playoff_proj for p in send_from_a) - 0.5 * sum(p.playoff_proj for p in send_from_b)
-
-    # Risk penalty
-    risk_a = 0.3 * sum(p.volatility for p in send_from_b)
-    risk_b = 0.3 * sum(p.volatility for p in send_from_a)
-
-    delta_a = round(delta_a + bye_relief_a + playoff_a - risk_a, 2)
-    delta_b = round(delta_b + bye_relief_b + playoff_b - risk_b, 2)
-    return delta_a, delta_b
-
-
-def propose_trades(settings: LeagueSettings, team_a: TeamState, team_b: TeamState, *, top_k: int = 3) -> List[TradeProposal]:
-    proposals: List[TradeProposal] = []
-
-    # Calculate needs once (performance optimization)
-    need_a = _need_score(team_a)
-    need_b = _need_score(team_b)
-
-    # Helper closure to build detailed rationale with manager context
-    def build_rationale(send_players: List[Player], receive_players: List[Player], da: float, db: float) -> str:
-        """Build human-readable trade rationale explaining benefits for both sides."""
-        # What you gain
-        your_gains = []
-        for p in receive_players:
-            if need_a.get(p.position, 0) > 1:
-                your_gains.append(f"fills need at {p.position}")
-            if p.bye_next3 == 0 and team_a.bye_exposure > 0:
-                your_gains.append(f"no bye weeks")
-            if p.playoff_proj > 15:
-                your_gains.append(f"strong playoff schedule")
-
-        # Why they accept
-        their_gains = []
-        for p in send_players:
-            if need_b.get(p.position, 0) > 1:
-                their_gains.append(f"fills their {p.position} need")
-            if p.bye_next3 == 0 and team_b.bye_exposure > 0:
-                their_gains.append(f"solves bye week issue")
-
-        # Manager context from transaction history analysis
-        mgr_context = ""
-        if team_b.manager_profile.get("active_manager"):
-            mgr_context = "Active manager likely to consider. "
-        elif team_b.manager_profile.get("trade_count", 0) == 0:
-            mgr_context = "Manager rarely trades - strong offer needed. "
-
-        # Build final human-readable rationale
-        your_part = f"You gain {da:.1f} pts: {', '.join(your_gains[:2]) if your_gains else 'roster upgrade'}"
-        their_part = f"They gain {db:.1f} pts: {', '.join(their_gains[:2]) if their_gains else 'improves depth'}"
-
-        return f"{mgr_context}{your_part}. {their_part}."
-
-    # 1-for-1 trades
-    for pa in team_a.roster:
-        for pb in team_b.roster:
-            da, db = _trade_delta_for_teams(team_a, team_b, [pa], [pb])
-            if da > 0 and db > 0:
-                score = round(da + db, 2)
-                rationale = build_rationale([pa], [pb], da, db)
-                both_sides_gain = round(da + db, 2)
-                # First-pass acceptance odds from opponent tendencies + gain signal
-                rate = (
-                    float(team_b.manager_profile.get("trade_acceptance_rate"))
-                    if isinstance(team_b.manager_profile, dict) and team_b.manager_profile.get("trade_acceptance_rate") is not None
-                    else float(team_b.manager_profile.get("trade_history_acceptance", 0.5))
-                    if isinstance(team_b.manager_profile, dict)
-                    else 0.5
+def rank_outbound_trades(
+    *,
+    roster: list[Projection],
+    opponents: dict[str, list[Projection]],
+    roster_need: dict[str, float],
+    limit: int = 5,
+) -> list[tuple[str, TradePackage]]:
+    proposals = []
+    for opponent_team_key, opponent_roster in opponents.items():
+        for outgoing in roster:
+            for incoming in opponent_roster:
+                package = evaluate_trade(
+                    send=[outgoing],
+                    receive=[incoming],
+                    roster_need=roster_need,
                 )
-                gain_signal = 1 / (1 + math.exp(-both_sides_gain / 3.0))  # sigmoid
-                acceptance_odds = max(0.0, min(1.0, 0.3 + 0.4 * rate + 0.3 * gain_signal))
-                proposals.append(
-                    TradeProposal(
-                        offer_from=team_a.team_id,
-                        offer_to=team_b.team_id,
-                        send=[pa.id],
-                        receive=[pb.id],
-                        score=score,
-                        rationale=rationale,
-                        acceptance_odds=acceptance_odds,
-                        both_sides_gain=both_sides_gain,
-                    )
-                )
-
-    # 2-for-2: pick top two by position needs heuristics (simple pair generation)
-    a_pairs = [(team_a.roster[i], team_a.roster[j]) for i in range(len(team_a.roster)) for j in range(i + 1, len(team_a.roster))]
-    b_pairs = [(team_b.roster[i], team_b.roster[j]) for i in range(len(team_b.roster)) for j in range(i + 1, len(team_b.roster))]
-    for pa1, pa2 in a_pairs[:6]:
-        for pb1, pb2 in b_pairs[:6]:
-            da, db = _trade_delta_for_teams(team_a, team_b, [pa1, pa2], [pb1, pb2])
-            if da > 0 and db > 0:
-                score = round(da + db, 2)
-                rationale = build_rationale([pa1, pa2], [pb1, pb2], da, db)
-                both_sides_gain = round(da + db, 2)
-                rate = (
-                    float(team_b.manager_profile.get("trade_acceptance_rate"))
-                    if isinstance(team_b.manager_profile, dict) and team_b.manager_profile.get("trade_acceptance_rate") is not None
-                    else float(team_b.manager_profile.get("trade_history_acceptance", 0.5))
-                    if isinstance(team_b.manager_profile, dict)
-                    else 0.5
-                )
-                gain_signal = 1 / (1 + math.exp(-both_sides_gain / 3.0))
-                acceptance_odds = max(0.0, min(1.0, 0.3 + 0.4 * rate + 0.3 * gain_signal))
-                proposals.append(
-                    TradeProposal(
-                        offer_from=team_a.team_id,
-                        offer_to=team_b.team_id,
-                        send=[pa1.id, pa2.id],
-                        receive=[pb1.id, pb2.id],
-                        score=score,
-                        rationale=rationale,
-                        acceptance_odds=acceptance_odds,
-                        both_sides_gain=both_sides_gain,
-                    )
-                )
-
-    proposals.sort(key=lambda p: p.score, reverse=True)
-    return proposals[:top_k]
+                if package.eligible:
+                    proposals.append((opponent_team_key, package))
+    proposals.sort(key=lambda item: item[1].score, reverse=True)
+    return proposals[:limit]
 
 
-def propose_and_notify(settings: LeagueSettings, team_a: TeamState, team_b: TeamState, *, top_k: int = 3) -> Tuple[List[TradeProposal], int]:
-    props = propose_trades(settings, team_a, team_b, top_k=top_k)
-    if not props:
-        msg_id = notify("trades", "No mutually beneficial trades found", "No 1-for-1 or 2-for-2 trades improved both teams.", {})
-        return [], msg_id
-    # Build concise inbox message
-    lines = []
-    for i, p in enumerate(props):
-        send = ",".join(p.send)
-        recv = ",".join(p.receive)
-        lines.append(f"{i+1}. {p.offer_from} send [{send}] ⇄ get [{recv}] — score {p.score:.1f}")
-    body = "\n".join(lines)
-    payload = {"proposals": [p.__dict__ for p in props]}
-    msg_id = notify("trades", "Trade proposals", body, payload)
-    return props, msg_id
+def _need_position(position: str) -> str:
+    if position in {"IDP", "DL", "LB", "DB", "CB", "S", "DE", "DT"}:
+        return "D"
+    return position
 
 
-__all__ = [
-    "Player",
-    "TeamState",
-    "TradeProposal",
-    "propose_trades",
-    "propose_and_notify",
-]
-
-
+__all__ = ["TradePackage", "evaluate_trade", "rank_outbound_trades"]

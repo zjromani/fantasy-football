@@ -1,413 +1,134 @@
-## Overview
+# Fantasy Football Auto-GM
 
-Fantasy Football helper app focused on settings-driven decisions with a single Inbox surface. Built with FastAPI, httpx, pydantic, sqlite, and Jinja templates.
+Headless, deterministic Yahoo fantasy-football manager for league `196780`.
+GitHub Actions observes league state, scores options with FantasyPros data, records
+every decision in SQLite, automatically applies safe lineup/IR changes, and sends
+FAB/trade proposals to ntfy for one-tap approval.
 
-- Inbox for messages: lineup checks, waivers, trades, weekly brief
-- Yahoo ingest and LeagueSettings parsing
-- Scoring and lineup optimizer honoring LeagueSettings
-- Waiver ranker with FAAB guidance
-- Trade Advisor v1 (needs-based, bye relief, playoff weighting)
+Yahoo write access is capability-probed. A rejected write leaves the system in
+advisory mode and preserves the exact action for manual entry.
 
-Server-rendered UI at `/` shows notifications with filters and mark-as-read.
+## Local setup
 
-## Quickstart
+Requires Python 3.13. Worker deployment additionally requires Node.js 22,
+Cloudflare Wrangler, `gh`, and authenticated GitHub/Cloudflare CLIs.
 
-1) Create virtualenv and install deps
 ```bash
 make venv
-```
-
-2) Run the app (http://127.0.0.1:8000)
-```bash
-make run
-```
-
-3) Tests and lint
-```bash
-make test
-make lint
-```
-
-## Environment
-
-Copy the example and fill in Yahoo OAuth secrets and your league key.
-```bash
 cp .env.example .env
-# set YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_REDIRECT_URI, LEAGUE_KEY, TEAM_KEY
-# LEAGUE_KEY accepts either nfl.l.<id> or just the numeric <id>
-# TEAM_KEY identifies your team for writes, e.g., nfl.l.<id>.t.<team_id>
 ```
 
-Optional:
-- `DB_PATH` to override the sqlite file location (defaults to `./app.db`).
-- `OPENAI_API_KEY` for AI-powered recommendations (get from https://platform.openai.com/api-keys)
-- `AI_AUTOPILOT=false` set to `true` to auto-execute high-confidence recommendations
+Set `LEAGUE_KEY` and `TEAM_KEY` in the environment or put their values in
+`config/league.yml`. Keep all write controls off during bootstrap:
 
-**Note on Projections**: The app includes a projections module (`app/projections.py`) that you can plug your own source into. Free projection APIs are hard to find - most require paid subscriptions. The AI works great without projections by using real-time news, Yahoo player stats, and matchup data instead.
-
-## Ngrok for Yahoo OAuth
-
-Yahoo requires an HTTPS, publicly reachable Redirect URI. The app runs locally on `http://localhost:8000`, which Yahoo won’t accept. Ngrok exposes your local port with a public HTTPS URL.
-
-### Why we need ngrok
-
-Yahoo OAuth redirect must be HTTPS and public. Ngrok provides that, tunneling to your local FastAPI server.
-
-### How we set it up
-
-1) Start ngrok in a separate terminal
-```bash
-ngrok http 8000
-```
-You’ll see something like:
-```
-Forwarding  https://e10adb7406ea.ngrok-free.app -> http://localhost:8000
+```dotenv
+WRITES_ENABLED=false
+DRY_RUN=true
 ```
 
-2) Update Redirect URI everywhere
-- In Yahoo Developer portal, set:
-```
-https://<your-subdomain>.ngrok-free.app/oauth/callback
-```
-- In your `.env`:
-```
-YAHOO_REDIRECT_URI=https://<your-subdomain>.ngrok-free.app/oauth/callback
-```
-Restart the app after changing `.env`.
-
-3) Use the ngrok URL in browser
-- Click “Connect Yahoo” in the UI to authorize the app (saves tokens). If misconfigured, the Inbox will show an error.
-
-### Quality-of-life: reserved domains
-
-If you don’t want the URL to change each time:
-1) Log into ngrok dashboard and reserve a subdomain (e.g., `zachfantasy.ngrok.app`).
-2) Create/update `~/.config/ngrok/ngrok.yml`:
-```yaml
-version: "3"
-authtoken: <your-ngrok-authtoken>
-tunnels:
-  fantasy:
-    addr: 8000
-    proto: http
-    domain: zachfantasy.ngrok.app
-```
-3) Start with:
-```bash
-ngrok start fantasy
-```
-Your Redirect URI remains stable:
-```
-https://zachfantasy.ngrok.app/oauth/callback
-```
-
-### Dev loop summary
-- Run FastAPI app locally on port 8000
-- Run `ngrok http 8000` (or `ngrok start fantasy` if reserved)
-- Copy the HTTPS forwarding URL to Yahoo Redirect URI and `.env`
-- Use that ngrok URL for OAuth flows (via the scripts below)
-
-## OAuth and Yahoo API
-
-1) Generate the authorization URL and sign in
-```bash
-python - <<'PY'
-from app.yahoo_client import YahooClient
-print("Open and sign in:", YahooClient().get_authorization_url(state="local"))
-PY
-```
-
-2) Exchange the code for tokens (saved to `~/.fantasy-bot/tokens.json`)
-```bash
-python - <<'PY'
-from app.yahoo_client import YahooClient
-YahooClient().exchange_code_for_tokens("PASTE_CODE")
-print("Tokens saved.")
-PY
-```
-
-3) Fetch your LeagueSettings and post to Inbox (optional script)
-```bash
-python - <<'PY'
-from app.yahoo_client import YahooClient
-from app.models import LeagueSettings
-from app.inbox import notify
-
-# Uses LEAGUE_KEY from .env if you don't pass a key into the UI actions
-LEAGUE_KEY="nfl.l.XXXXX"  # optional override
-c = YahooClient()
-data = c.get(f"league/{LEAGUE_KEY}", params={"format":"json"}).json()
-settings = LeagueSettings.from_yahoo(data)
-notify("info", "Detected League Settings", "Loaded from Yahoo.", settings.model_dump())
-print(settings.model_dump_json(indent=2))
-PY
-```
-
-## Common Workflows
-
-### Cache a league snapshot (or use the UI “Run Ingest Now”)
-```bash
-python - <<'PY'
-from app.yahoo_client import YahooClient
-from app.ingest import fetch_league_bundle
-# LEAGUE_KEY comes from .env if not specified here
-LEAGUE_KEY="nfl.l.XXXXX"
-bundle = fetch_league_bundle(YahooClient(), LEAGUE_KEY, cache_dir=".cache")
-print("cached:", list(bundle.keys()))
-PY
-```
-
-### Tuesday GM Brief
-```bash
-python -m app.schedule gm_brief
-```
-Posts a deterministic GM Brief to Inbox.
-
-### Waiver recommendations (demo)
-```bash
-python - <<'PY'
-from app.models import LeagueSettings
-from app.waivers import recommend_waivers
-
-s = LeagueSettings.from_yahoo({"settings":{"roster_positions":[
- {"position":"QB","count":1},{"position":"RB","count":2},{"position":"WR","count":2},
- {"position":"TE","count":1},{"position":"W/R/T","count":1},{"position":"BN","count":5}],
- "scoring":{"ppr":"full"}}})
-current = {"RB":2,"WR":2,"QB":1,"TE":1}
-free_agents = [
-  {"id":"p_rb1","name":"Upside RB","position":"RB","proj_base":11,"trend_last2":2,"schedule_next4":1},
-  {"id":"p_wr1","name":"Volume WR","position":"WR","proj_base":12,"trend_last2":0,"schedule_next4":0},
-  {"id":"p_te1","name":"Athletic TE","position":"TE","proj_base":8,"trend_last2":1,"schedule_next4":2},
-]
-recs, msg_id = recommend_waivers(settings=s, current_starters_count=current, free_agents=free_agents, faab_remaining=50, waiver_type="faab", top_n=3)
-print("Inbox message id:", msg_id)
-for r in recs:
-    print(r)
-PY
-```
-
-### Lineup optimizer (demo)
-```bash
-python - <<'PY'
-from app.models import LeagueSettings
-from app.lineup import optimize_lineup
-from app.inbox import notify
-
-s=LeagueSettings.from_yahoo({"settings":{"roster_positions":[
- {"position":"QB","count":1},{"position":"RB","count":2},{"position":"WR","count":2},
- {"position":"TE","count":1},{"position":"W/R/T","count":1},{"position":"BN","count":5}],
- "scoring":{"ppr":"full"}}})
-candidates=[
- {"id":"rbA","position":"RB","projected":13.5,"injury":"","is_bye":False,"tier":"tier-1"},
- {"id":"rbB","position":"RB","projected":12.1,"injury":"Q","is_bye":False},
- {"id":"wrA","position":"WR","projected":14.2,"injury":"","is_bye":False},
- {"id":"teA","position":"TE","projected":8.4,"injury":"","is_bye":False},
-]
-current={"RB":["rbA","rbB"],"WR":["wrA"],"TE":["teA"]}
-swaps=optimize_lineup(settings=s, candidates=candidates, current_starters=current)
-lines=[f"- {sw.in_player_id} over {sw.out_player_id}: {sw.reason}" for sw in swaps]
-notify("lineup","Lineup suggestions","\n".join(lines),{"swaps":[sw.__dict__ for sw in swaps]})
-print("\n".join(lines))
-PY
-```
-
-### Trade Advisor v1 (demo)
-## Yahoo writes (approvals)
-
-Approving a waiver recommendation will attempt a Yahoo write if both env vars are set:
-
-- `LEAGUE_KEY` (e.g., nfl.l.10530)
-- `TEAM_KEY` (e.g., nfl.l.10530.t.7)
-
-The app submits a minimal XML payload via `POST /fantasy/v2/league/{LEAGUE_KEY}/transactions` and logs the request/response to `transactions_raw`. Writes are only attempted on Approve; Deny cancels the item.
+Generate a Yahoo authorization URL with a random state:
 
 ```bash
-python - <<'PY'
-from app.models import LeagueSettings
-from app.trades import Player, TeamState, propose_and_notify
-
-s=LeagueSettings.from_yahoo({"settings":{"roster_positions":[
- {"position":"QB","count":1},{"position":"RB","count":2},{"position":"WR","count":2},
- {"position":"TE","count":1},{"position":"W/R/T","count":1},{"position":"BN","count":5}],
- "scoring":{"ppr":"full"}}})
-
-a = TeamState(
-  team_id="A", starters_by_slot={"RB":2,"WR":2,"TE":1}, bench_redundancy={"RB":0,"WR":1,"TE":0},
-  bye_exposure=1, injuries=0, schedule_difficulty=1.0, manager_profile={},
-  roster=[
-    Player("a1","RB1","RB", proj_next3=45, playoff_proj=30, bye_next3=0),
-    Player("a2","WR1","WR", proj_next3=40, playoff_proj=28, bye_next3=0),
-  ],
-)
-b = TeamState(
-  team_id="B", starters_by_slot={"RB":2,"WR":2,"TE":1}, bench_redundancy={"RB":2,"WR":0,"TE":0},
-  bye_exposure=0, injuries=0, schedule_difficulty=1.5, manager_profile={},
-  roster=[
-    Player("b1","WR2","WR", proj_next3=42, playoff_proj=25, bye_next3=0),
-    Player("b2","RB2","RB", proj_next3=38, playoff_proj=27, bye_next3=0),
-  ],
-)
-props, msg_id = propose_and_notify(s, a, b, top_k=3)
-print("Inbox message id:", msg_id)
-for p in props:
-    print(p)
-PY
+.venv/bin/python -m app.cli oauth-url --state-file ~/.fantasy-bot/oauth-state
+.venv/bin/python -m app.cli oauth-exchange \
+  --code '<returned-code>' \
+  --state '<returned-state>' \
+  --state-file ~/.fantasy-bot/oauth-state
 ```
 
-## CLI
+Copy the resulting refresh token from the protected token file into the
+`YAHOO_REFRESH_TOKEN` secret. Never commit `.env`, token files, raw Yahoo
+snapshots, or SQLite databases.
 
-Migrate database schema:
+## Commands
+
 ```bash
-python -m app.store migrate
+python -m app.cli migrate
+python -m app.cli sync --week 1
+python -m app.cli recommend --state normalized-state.json
+python -m app.cli run-live --week 1
+python -m app.cli execute --decision-id 1
+python -m app.cli probe-write --week 1 --positions current-roster.json
+python -m app.cli digest
+python -m app.cli export-audit
 ```
 
-Tuesday brief:
+`run-live` is the scheduled entry point. It retrieves Yahoo state and
+FantasyPros weekly/ROS data, normalizes player identities, creates lineup, FAB,
+incoming-trade, and outbound-trade decisions, then applies policy.
+
+## Safety model
+
+- Lineup and legal IR moves are the only categories eligible for automatic writes.
+- FAB claims and every trade require a signed, expiring ntfy approval.
+- Approval URLs are payload-bound, expire within 24 hours or at the Yahoo deadline,
+  and are atomically consumed once by Cloudflare D1.
+- Stale data blocks transactions. Only explicitly marked safe lineup corrections
+  may proceed from stale data.
+- Top-30 ROS players and `protected_player_keys` cannot be dropped.
+- FAB is limited to two claims weekly, 15% normally, and 40% for a starter vacancy.
+- `WRITES_ENABLED=false` is the repository-wide kill switch. Observation,
+  recommendations, and redacted audits continue.
+- Raw provider responses are temporary and never uploaded as artifacts.
+
+## GitHub and Cloudflare bootstrap
+
+Create these GitHub Actions secrets:
+
+- `YAHOO_CLIENT_ID`
+- `YAHOO_CLIENT_SECRET`
+- `YAHOO_REFRESH_TOKEN`
+- `FANTASYPROS_API_KEY`
+- `NTFY_TOPIC`
+- `APPROVAL_BASE_URL`
+- `APPROVAL_SIGNING_SECRET`
+- `APPROVAL_INGEST_TOKEN`
+- `SCHEDULE_JITTER_SECRET`
+
+Create these repository variables:
+
+- `FANTASY_WEEK`
+- `LEAGUE_KEY`
+- `TEAM_KEY`
+- `WRITES_ENABLED` (start with `false`)
+- `LINEUP_WRITES_ENABLED` (enable first after two reviewed cycles)
+- `FAB_WRITES_ENABLED` (enable only after separate review)
+- `TRADE_WRITES_ENABLED` (enable only when playoff/risk data is healthy)
+
+For the Worker:
+
+1. Run `npx wrangler d1 create fantasy-auto-gm-approvals`, then put the returned
+   database ID in `worker/wrangler.toml`.
+2. Run `npx wrangler d1 migrations apply fantasy-auto-gm-approvals --remote`.
+3. Set Worker secrets `SIGNING_SECRET`, `INGEST_TOKEN`, `GITHUB_TOKEN`,
+   `GITHUB_REPOSITORY`, `NTFY_TOPIC`, and `PUBLIC_BASE_URL`.
+4. Give `GITHUB_TOKEN` only Actions workflow-dispatch access to this repository.
+5. Deploy from `worker/` with `npm ci && npm run deploy`.
+6. Put the deployed URL in `APPROVAL_BASE_URL`.
+
+The signing and ingest values must match their GitHub counterparts.
+
+After creating the D1 database and exporting the account-specific values,
+the bootstrap script generates the remaining secrets, configures GitHub and the
+Worker, deploys the Worker, and leaves writes disabled:
+
 ```bash
-python -m app.schedule gm_brief
+export YAHOO_CLIENT_ID=...
+export YAHOO_CLIENT_SECRET=...
+export YAHOO_REFRESH_TOKEN=...
+export FANTASYPROS_API_KEY=...
+export LEAGUE_KEY=...
+export TEAM_KEY=...
+export WORKER_GITHUB_TOKEN=...
+export APPROVAL_BASE_URL=...
+scripts/bootstrap.sh zjromani/fantasy-football 1
 ```
 
-## Troubleshooting
+## Rollout
 
-- Port 8000 already in use:
-```bash
-lsof -i :8000
-kill -9 <pid>
-```
+Run `make verify` and two complete dry-run cycles. Review every generated
+lineup, FAB, and trade proposal. Probe an identical roster before player locks,
+then record the result. Enable each category separately after its review, then
+enable the global `WRITES_ENABLED=true` kill switch.
 
-- Tokens missing or expired: re-run the OAuth steps. Ensure `.env` contains correct Redirect URI matching your ngrok URL.
-
-- Yahoo API returns XML: pass `params={"format":"json"}` when calling API via `YahooClient().get(...)`.
-
-- SQLite write errors: ensure repo directory is writable or set `DB_PATH` to a writable location.
-
-
-## AI Agent
-
-The app includes an AI Agent that pulls league data, ranks waivers, optimizes your lineup, and proposes trades. It talks to OpenAI and uses the app’s internal tools (ingest, scoring, waivers, trades, inbox, and optional writes).
-
-### Prereqs
-- Python venv active
-- Yahoo OAuth connected
-- ngrok URL set as Redirect URI in Yahoo
-- OpenAI paid account
-
-### Env
-Add to `.env`:
-
-```
-OPENAI_API_KEY=sk-...
-AI_AUTOPILOT=false               # true enables auto-execute for approved actions
-AI_THRESHOLDS_JSON={"waiver":{"score_min":12,"confidence_min":0.65,"faab_cap_pct":0.25}}
-```
-
-### What the Agent can do
-- Pull league state and parse LeagueSettings
-- Rank waivers with FAAB min/max, settings-aware
-- Optimize start/sit with injury and BYE rules
-- Propose trades that improve both sides and relieve BYE zeros
-- Post a single GM Brief to the Inbox with 3 actions
-- Optionally execute waivers if autopilot and thresholds pass
-- Everything is logged to SQLite for audit
-
-### Run it
-Daily brief:
-
-```
-python -m app.schedule ai_morning
-```
-
-Tuesday waiver plan:
-
-```
-python -m app.schedule ai_tuesday
-```
-
-Game day:
-
-```
-python -m app.schedule ai_gameday
-```
-
-Manual run:
-
-```
-python - <<'PY'
-from app.ai.agent import run_agent
-msg_id = run_agent("weekly_brief", constraints={})
-print("Inbox message:", msg_id)
-PY
-```
-
-### Automated Scheduling (macOS only)
-
-The app includes launchd jobs for hands-off automation:
-
-**Install:**
-```bash
-cd launchd && ./install.sh
-```
-
-**Verify:**
-```bash
-launchctl list | grep fantasy
-```
-
-**Schedule:**
-- `ai_morning`: Daily at 7:00 AM - Sync data and post daily brief
-- `ai_tuesday`: Tuesday at 6:00 AM - Analyze waivers (auto-execute if autopilot enabled)
-- `ai_gameday`: Sunday at 10:00 AM - Optimize lineup for game day
-
-**Logs:**
-```bash
-tail -f logs/ai-morning.log
-tail -f logs/ai-tuesday.log
-tail -f logs/ai-gameday.log
-```
-
-**Uninstall:**
-```bash
-cd launchd && ./uninstall.sh
-```
-
-**Note:** Jobs use the virtualenv at `.venv/bin/python` automatically. Ensure AI_AUTOPILOT and thresholds are configured in `.env` before enabling.
-
-### Approvals and autopilot
-- By default the Agent asks for approval in the Inbox before writes.
-- Set `AI_AUTOPILOT=true` to allow auto-execution for actions that meet thresholds.
-- Thresholds live in `AI_THRESHOLDS_JSON` and are validated at startup.
-
-### Observability
-- Each agent run writes to `agent_runs`.
-- Each tool call writes to `tool_calls`.
-- Final decisions write to `decisions`.
-Open an Inbox message and follow the summary to trace the run.
-
-### Notes
-- Every decision uses LeagueSettings. If settings are missing, runs stop.
-- Trades are proposals only in v1. Waivers can execute with approval or autopilot.
-- When in doubt on token usage, reduce context in `app/ai/context.py`.
-
-## Known Limitations
-
-### Waiver Wire Analysis
-- **FIXED: Yahoo API Limit** ✅ - Now using pagination + position-specific queries to fetch 60+ players (was 25)
-- **FIXED: Position Diversity** ✅ - Prioritizes RB/WR over QB, max 2 per position (was all QBs)
-- **No Projections API**: The free Fantasy Football Data Pros API doesn't have current week data. System uses fallback logic:
-  - Position baselines: QB: 18pts, RB: 12pts, WR: 10pts, TE: 8pts
-  - Injured bench players (O/D/IR) = 0.0 pts
-  - Yahoo's Add/Drop rank (AR sort) for quality order
-- **Known Issue: Suggests dropping elite injured players** - System only looks at current week value
-  - Example: Suggests dropping Cooper Kupp (IR) or Lamar Jackson (Out)
-  - Needs rest-of-season rankings or player tier system
-- **Solution**: Integrate FantasyPros ROS rankings or create a do-not-drop list for elite players
-
-### Projections
-- Currently using a pluggable framework (see `app/projections.py`)
-- Returns empty list by default
-- To integrate your own source:
-  1. Create a class implementing `ProjectionsAPI` interface
-  2. Override `fetch_projections(week)` method
-  3. Return list of `PlayerProjection` objects
-- Cached for 6 hours to reduce API calls
-
-
+See `RUNBOOK.md` for incidents, provider outages, approvals, and manual fallback.

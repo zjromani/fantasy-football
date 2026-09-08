@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+node_modules/
 .DS_Store
 .cache/
 app.db
@@ -10,3 +11,6 @@ coverage*
 dist/
 build/
 *.sqlite
+artifacts/
+logs/*.log
+tokens.json

@@ -1,0 +1,81 @@
+name: Execute Fantasy Approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload:
+        required: true
+      hash:
+        required: true
+      approval_id:
+        required: true
+      expires:
+        required: true
+      signature:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fantasy-auto-gm
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
+      YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
+      YAHOO_REFRESH_TOKEN: ${{ secrets.YAHOO_REFRESH_TOKEN }}
+      APPROVAL_SIGNING_SECRET: ${{ secrets.APPROVAL_SIGNING_SECRET }}
+      WRITES_ENABLED: ${{ vars.WRITES_ENABLED == 'true' }}
+      LINEUP_WRITES_ENABLED: ${{ vars.LINEUP_WRITES_ENABLED == 'true' }}
+      FAB_WRITES_ENABLED: ${{ vars.FAB_WRITES_ENABLED == 'true' }}
+      TRADE_WRITES_ENABLED: ${{ vars.TRADE_WRITES_ENABLED == 'true' }}
+      DRY_RUN: ${{ vars.WRITES_ENABLED != 'true' }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: auto-gm.sqlite
+          key: fantasy-db-${{ github.run_id }}
+          restore-keys: fantasy-db-
+      - run: pip install -r requirements.lock
+      - name: Execute immutable approved payload
+        id: execute
+        run: |
+          result="$(python -m app.cli execute-payload \
+            --payload '${{ inputs.payload }}' \
+            --hash '${{ inputs.hash }}' \
+            --approval-id '${{ inputs.approval_id }}' \
+            --expires '${{ inputs.expires }}' \
+            --signature '${{ inputs.signature }}')"
+          echo "$result"
+          jq -e '.status | startswith("executed") or startswith("submitted")' \
+            <<< "$result"
+          echo "status=$(jq -r '.status' <<< "$result")" >> "$GITHUB_OUTPUT"
+      - name: Send receipt
+        if: success() && env.NTFY_TOPIC != ''
+        run: |
+          status='${{ steps.execute.outputs.status }}'
+          title="Fantasy action submitted"
+          [[ "$status" == executed* ]] && title="Fantasy action executed"
+          curl --fail --silent --show-error \
+            -H "Title: $title" \
+            -d "$status in run $GITHUB_RUN_ID" \
+            "https://ntfy.sh/$NTFY_TOPIC"
+      - name: Alert on failure
+        if: failure() && env.NTFY_TOPIC != ''
+        run: |
+          curl --fail --silent --show-error \
+            -H "Title: Fantasy approval failed" \
+            -H "Priority: urgent" \
+            -d "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            "https://ntfy.sh/$NTFY_TOPIC"

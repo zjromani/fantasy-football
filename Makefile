@@ -3,28 +3,34 @@ VENV := .venv
 PIP := $(VENV)/bin/pip
 PY := $(VENV)/bin/python
 
-.PHONY: venv install run test lint fmt clean
+.PHONY: venv install migrate test lint fmt worker-test verify clean
 
 venv:
 	$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	$(PIP) install -r requirements.lock
 
 install: venv
 
-run:
-	$(VENV)/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
+migrate:
+	$(PY) -m app.cli migrate
 
 test:
-	PYTHONPATH=$(PWD) $(VENV)/bin/pytest -q
+	$(VENV)/bin/pytest -q
 
 lint:
-	$(VENV)/bin/ruff check .
-	$(VENV)/bin/black --check .
+	$(VENV)/bin/ruff check app tests
+	$(VENV)/bin/ruff format --check app tests
 
 fmt:
-	$(VENV)/bin/black .
+	$(VENV)/bin/ruff check app tests --fix
+	$(VENV)/bin/ruff format app tests
+
+worker-test:
+	node --test worker/test/worker.test.mjs
+
+verify: lint test worker-test
 
 clean:
-	rm -rf $(VENV) __pycache__ **/__pycache__ .pytest_cache app.db
+	rm -rf $(VENV) .pytest_cache auto-gm.sqlite artifacts
 

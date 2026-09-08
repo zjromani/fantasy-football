@@ -1,290 +1,70 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
 
-from .models import LeagueSettings
-from .yahoo_client import YahooClient
-from .store import migrate
-from .inbox import notify
-from .store import get_connection
+from .domain import Projection
+from .policy import PolicyEngine
 
 
-@dataclass
-class WaiverCandidate:
-    player_id: str
-    name: str
-    position: str
-    proj_base: float
-    trend_last2: float  # recent usage/points delta
-    schedule_difficulty_next4: float  # 0=easy .. 3=hard
+@dataclass(frozen=True)
+class FabRecommendation:
+    add_player_key: str
+    drop_player_key: str | None
+    bid: int
+    net_ros_gain: float
+    summary: str
 
 
-@dataclass
-class WaiverRecommendation:
-    player_id: str
-    name: str
-    position: str
-    score: float
-    faab_min: int
-    faab_max: int
-
-
-def _positional_gaps(settings: LeagueSettings, current_starters_count: Dict[str, int]) -> Dict[str, int]:
-    limits = settings.positional_limits
-    targets = {"QB": limits.qb, "RB": limits.rb, "WR": limits.wr, "TE": limits.te}
-    gaps: Dict[str, int] = {}
-    for pos, target in targets.items():
-        have = int(current_starters_count.get(pos, 0))
-        gaps[pos] = max(0, target - have)
-    return gaps
-
-
-def _score_candidate(c: WaiverCandidate, gaps: Dict[str, int]) -> float:
-    # Simple heuristic score
-    base = c.proj_base
-    trend = 0.5 * c.trend_last2
-    schedule = (2.0 - c.schedule_difficulty_next4) * 1.0
-    gap_bonus = 2.0 if gaps.get(c.position.upper(), 0) > 0 else 0.0
-    return round(base + trend + schedule + gap_bonus, 2)
-
-
-def _faab_bounds(score: float, faab_remaining: int, waiver_type: str) -> Tuple[int, int]:
-    if waiver_type != "faab" or faab_remaining <= 0:
-        return (0, 0)
-    min_bid = max(1, int(round(score * 0.6)))
-    max_bid = max(min_bid + 1, int(round(score * 0.9)))
-    min_bid = min(min_bid, faab_remaining)
-    max_bid = min(max_bid, faab_remaining)
-    return (min_bid, max_bid)
-
-
-def rank_free_agents(
+def rank_fab_moves(
     *,
-    settings: LeagueSettings,
-    current_starters_count: Dict[str, int],
-    free_agents: List[Dict],
-    faab_remaining: int,
-    waiver_type: str = "faab",
-    top_n: int = 5,
-) -> List[WaiverRecommendation]:
-    gaps = _positional_gaps(settings, current_starters_count)
-    recs: List[WaiverRecommendation] = []
-    for fa in free_agents:
-        c = WaiverCandidate(
-            player_id=str(fa["id"]),
-            name=str(fa.get("name", fa["id"])),
-            position=str(fa.get("position", "UTIL")).upper(),
-            proj_base=float(fa.get("proj_base", 0.0)),
-            trend_last2=float(fa.get("trend_last2", 0.0)),
-            schedule_difficulty_next4=float(fa.get("schedule_next4", 1.5)),
+    free_agents: list[Projection],
+    roster: list[Projection],
+    budget_remaining: int,
+    policy: PolicyEngine,
+    ros_ranks: dict[str, int],
+    manually_protected: set[str],
+    starter_vacancies: set[str],
+    limit: int = 5,
+) -> list[FabRecommendation]:
+    droppable = [
+        player
+        for player in roster
+        if not policy.is_protected(
+            player, ros_ranks.get(player.player_key), manually_protected
         )
-        score = _score_candidate(c, gaps)
-        bmin, bmax = _faab_bounds(score, faab_remaining, waiver_type)
-        recs.append(WaiverRecommendation(c.player_id, c.name, c.position, score, bmin, bmax))
-    recs.sort(key=lambda r: (r.score, r.faab_max), reverse=True)
-    return recs[:top_n]
-
-
-def persist_recommendations(recs: List[WaiverRecommendation]) -> int:
-    if not recs:
-        return notify("waivers", "No waiver targets", "No viable free agents were identified.", {})
-    connection = get_connection()
-    try:
-        cur = connection.cursor()
-        for r in recs:
-            payload = {
-                "player_id": r.player_id,
-                "position": r.position,
-                "score": r.score,
-                "faab_min": r.faab_min,
-                "faab_max": r.faab_max,
-            }
-            cur.execute(
-                "INSERT INTO recommendations(kind, title, body, payload) VALUES(?, ?, ?, ?)",
-                (
-                    "waivers",
-                    f"Add {r.name} ({r.position})",
-                    f"Score {r.score:.1f}. FAAB {r.faab_min}-{r.faab_max}",
-                    __import__("json").dumps(payload),
-                ),
+    ]
+    recommendations = []
+    for candidate in free_agents:
+        same_position = [
+            player for player in droppable if player.position == candidate.position
+        ]
+        drop = min(
+            same_position or droppable,
+            key=lambda player: player.ros_points,
+            default=None,
+        )
+        drop_value = drop.ros_points if drop else 0.0
+        gain = round(candidate.ros_points - drop_value, 2)
+        if gain <= 0:
+            continue
+        vacancy = candidate.position in starter_vacancies
+        cap = policy.fab_bid_cap(budget_remaining, vacancy)
+        bid = min(cap, max(1, round(gain / max(candidate.ros_points, 1) * 100)))
+        recommendations.append(
+            FabRecommendation(
+                add_player_key=candidate.player_key,
+                drop_player_key=drop.player_key if drop else None,
+                bid=bid,
+                net_ros_gain=gain,
+                summary=f"Add {candidate.name}"
+                + (f", drop {drop.name}" if drop else "")
+                + f" for {gain:.1f} ROS points",
             )
-        connection.commit()
-    finally:
-        connection.close()
-
-    # Build one inbox message
-    lines = [f"{i+1}. {r.name} ({r.position}) — score {r.score:.1f}, FAAB {r.faab_min}-{r.faab_max}" for i, r in enumerate(recs)]
-    body = "\n".join(lines)
-    msg_id = notify("waivers", "Waiver targets", body, {"items": [r.__dict__ for r in recs]})
-    return msg_id
-
-
-def recommend_waivers(
-    *,
-    settings: LeagueSettings,
-    current_starters_count: Dict[str, int],
-    free_agents: List[Dict],
-    faab_remaining: int,
-    waiver_type: str = "faab",
-    top_n: int = 5,
-) -> Tuple[List[WaiverRecommendation], int]:
-    recs = rank_free_agents(
-        settings=settings,
-        current_starters_count=current_starters_count,
-        free_agents=free_agents,
-        faab_remaining=faab_remaining,
-        waiver_type=waiver_type,
-        top_n=top_n,
-    )
-    message_id = persist_recommendations(recs)
-    return recs, message_id
-
-
-__all__ = [
-    "WaiverRecommendation",
-    "rank_free_agents",
-    "persist_recommendations",
-    "recommend_waivers",
-]
-
-
-def free_agents_from_yahoo(client: YahooClient, league_key: str, max_players: int = 100) -> List[Dict]:
-    """
-    Fetch free agents from Yahoo Fantasy API.
-    Uses players;status=A (available) to get actual free agents.
-    """
-    # Yahoo API: status=A means available (free agents + waivers)
-    # count= controls how many players to fetch
-    response = client.get(
-        f"league/{league_key}/players;status=A",
-        params={"format": "json", "count": str(max_players)}
-    )
-    data = response.json()
-
-    # Parse Yahoo's nested structure
-    fc = data.get("fantasy_content", {})
-    league_data = fc.get("league")
-
-    # Yahoo returns league as [league_obj, {sub_resources}]
-    players_data = {}
-    if isinstance(league_data, list) and len(league_data) > 1:
-        players_data = league_data[1].get("players", {})
-    elif isinstance(league_data, dict):
-        players_data = league_data.get("players", {})
-
-    result: List[Dict] = []
-
-    # Players are keyed numerically: "0", "1", "2", ...
-    for key, value in players_data.items():
-        if key == "count" or not key.isdigit():
-            continue
-
-        player_wrap = value
-        if not isinstance(player_wrap, dict):
-            continue
-
-        player_list = player_wrap.get("player")
-        if not isinstance(player_list, list):
-            continue
-
-        # Flatten Yahoo's nested list structure
-        player = {}
-        for item in player_list:
-            if isinstance(item, list):
-                for sub_item in item:
-                    if isinstance(sub_item, dict):
-                        player.update(sub_item)
-            elif isinstance(item, dict):
-                player.update(item)
-
-        # Extract player info
-        pid = str(player.get("player_id") or player.get("player_key") or "")
-        if not pid:
-            continue
-
-        name_obj = player.get("name", {})
-        if isinstance(name_obj, dict):
-            name = name_obj.get("full") or name_obj.get("ascii_first", "") + " " + name_obj.get("ascii_last", "")
-            name = name.strip()
-        else:
-            name = str(name_obj) if name_obj else pid
-
-        pos = player.get("display_position") or player.get("primary_position") or "UTIL"
-        team = player.get("editorial_team_abbr") or ""
-
-        # Basic projections (we'll enhance this with real projections later)
-        # For now, use a simple heuristic based on position
-        proj_base = {
-            "QB": 15.0,
-            "RB": 8.0,
-            "WR": 8.0,
-            "TE": 6.0,
-            "K": 7.0,
-            "DEF": 7.0,
-        }.get(pos, 5.0)
-
-        result.append({
-            "id": pid,
-            "name": name,
-            "position": pos,
-            "team": team,
-            "proj_base": proj_base,
-            "trend_last2": 0.0,  # TODO: Calculate from recent games
-            "schedule_next4": 1.5,  # TODO: Get from matchups
-        })
-
-        if len(result) >= max_players:
-            break
-
-    return result
-
-
-def free_agents_from_yahoo_old(client: YahooClient, league_key: str, max_players: int = 100) -> List[Dict]:
-    """OLD VERSION - kept for reference. Use free_agents_from_yahoo instead."""
-    # Fetch players and try to filter to free agents if the structure contains a status field.
-    # Yahoo returns XML by default; we pass format=json from the caller route. This parser is defensive.
-    response = client.get(f"league/{league_key}/players", params={"format": "json"})
-    data = response.json()
-    players_container = data.get("players") or data.get("league", {}).get("players") or []
-    result: List[Dict] = []
-    for p in players_container:
-        # Try to accommodate different shapes
-        pid = str(p.get("player_id") or p.get("id") or p.get("playerKey") or p.get("player_key") or p)
-        name = (
-            p.get("name")
-            or (p.get("player") or {}).get("name")
-            or (p.get("player") or {}).get("full")
-            or pid
         )
-        if isinstance(name, dict):
-            name = name.get("full") or name.get("display") or pid
-        pos = (
-            p.get("position")
-            or p.get("display_position")
-            or (p.get("player") or {}).get("display_position")
-            or (p.get("player") or {}).get("primary_position")
-            or "UTIL"
-        )
-        status = str(p.get("status") or (p.get("player") or {}).get("status") or "").upper()
-        # Filter likely free agents if status present
-        if status and status not in {"FA", "W"}:
-            continue
-        # Naive projections until a proper source is integrated
-        proj_base = float((p.get("proj_points") or (p.get("player") or {}).get("proj_points") or 5.0))
-        trend = float((p.get("trend_last2") or 0.0))
-        sched = float((p.get("schedule_next4") or 1.0))
-        result.append({
-            "id": pid,
-            "name": name,
-            "position": pos,
-            "proj_base": proj_base,
-            "trend_last2": trend,
-            "schedule_next4": sched,
-        })
-        if len(result) >= max_players:
-            break
-    return result
+    recommendations.sort(
+        key=lambda recommendation: recommendation.net_ros_gain, reverse=True
+    )
+    return recommendations[:limit]
 
 
-
+__all__ = ["FabRecommendation", "rank_fab_moves"]

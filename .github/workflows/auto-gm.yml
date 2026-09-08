@@ -1,0 +1,108 @@
+name: Fantasy Auto-GM
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        type: choice
+        options: [sync, lineup, pre-kickoff, fab, trades, digest, all]
+        default: all
+  schedule:
+    - cron: "11 13 * * *"
+    - cron: "23 15 * * 2"
+    - cron: "37 16 * * *"
+    - cron: "7,37 16-23 * * 0"
+    - cron: "41 14 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fantasy-auto-gm
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DB_PATH: auto-gm.sqlite
+      LEAGUE_CONFIG_PATH: config/league.yml
+      LEAGUE_KEY: ${{ vars.LEAGUE_KEY }}
+      TEAM_KEY: ${{ vars.TEAM_KEY }}
+      YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
+      YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
+      YAHOO_REFRESH_TOKEN: ${{ secrets.YAHOO_REFRESH_TOKEN }}
+      FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      APPROVAL_BASE_URL: ${{ secrets.APPROVAL_BASE_URL }}
+      APPROVAL_SIGNING_SECRET: ${{ secrets.APPROVAL_SIGNING_SECRET }}
+      APPROVAL_INGEST_TOKEN: ${{ secrets.APPROVAL_INGEST_TOKEN }}
+      SCHEDULE_JITTER_SECRET: ${{ secrets.SCHEDULE_JITTER_SECRET }}
+      WRITES_ENABLED: ${{ vars.WRITES_ENABLED == 'true' }}
+      LINEUP_WRITES_ENABLED: ${{ vars.LINEUP_WRITES_ENABLED == 'true' }}
+      FAB_WRITES_ENABLED: ${{ vars.FAB_WRITES_ENABLED == 'true' }}
+      TRADE_WRITES_ENABLED: ${{ vars.TRADE_WRITES_ENABLED == 'true' }}
+      DRY_RUN: ${{ vars.WRITES_ENABLED != 'true' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: auto-gm.sqlite
+          key: fantasy-db-${{ github.run_id }}
+          restore-keys: fantasy-db-
+      - run: pip install -r requirements.lock
+      - name: Select scheduled job
+        id: route
+        shell: bash
+        run: |
+          job="${{ github.event.inputs.job }}"
+          if [[ -z "$job" ]]; then
+            case "${{ github.event.schedule }}" in
+              "11 13 * * *"|"7,37 16-23 * * 0") job="lineup" ;;
+              "23 15 * * 2") job="fab" ;;
+              "37 16 * * *") job="trades" ;;
+              "41 14 * * 1") job="digest" ;;
+            esac
+          fi
+          [[ "$job" == "pre-kickoff" ]] && job="lineup"
+          echo "job=$job" >> "$GITHUB_OUTPUT"
+      - name: Apply deterministic weekly jitter
+        run: python -m app.jitter "${{ steps.route.outputs.job }}" --maximum-seconds 600
+      - name: Run observation and recommendation cycle
+        if: steps.route.outputs.job != 'digest' && steps.route.outputs.job != 'sync'
+        run: |
+          python -m app.cli run-live \
+            --week "${{ vars.FANTASY_WEEK }}" \
+            --only "${{ steps.route.outputs.job }}" \
+            --raw-output /tmp/raw-state.json
+      - name: Sync state only
+        if: steps.route.outputs.job == 'sync'
+        run: python -m app.cli sync --week "${{ vars.FANTASY_WEEK }}" --output /tmp/raw-state.json
+      - name: Send weekly digest
+        if: steps.route.outputs.job == 'digest'
+        run: python -m app.cli digest
+      - name: Poll submitted Yahoo transactions
+        if: always()
+        run: python -m app.cli poll-transactions
+      - name: Export redacted audit
+        if: always()
+        run: python -m app.cli export-audit --output artifacts/audit.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: fantasy-audit-${{ github.run_id }}
+          path: artifacts/audit.json
+          retention-days: 14
+      - name: Alert on failure
+        if: failure() && env.NTFY_TOPIC != ''
+        run: |
+          curl --fail --silent --show-error \
+            -H "Title: Fantasy Auto-GM failed" \
+            -H "Priority: urgent" \
+            -d "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            "https://ntfy.sh/$NTFY_TOPIC"
