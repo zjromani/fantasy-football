@@ -8,5 +8,6 @@ crons = ["0 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "fantasy-auto-gm-approvals"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "cd137212-546b-46fb-aa0f-bb8a2d84baa5"
 migrations_dir = "migrations"
+
