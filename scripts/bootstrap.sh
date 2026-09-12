@@ -28,10 +28,10 @@ for name in "${required[@]}"; do
   fi
 done
 
-signing_secret="$(openssl rand -hex 32)"
-ingest_token="$(openssl rand -hex 32)"
-jitter_secret="$(openssl rand -hex 32)"
-ntfy_topic="fantasy-auto-gm-$(openssl rand -hex 12)"
+signing_secret="${APPROVAL_SIGNING_SECRET:-$(openssl rand -hex 32)}"
+ingest_token="${APPROVAL_INGEST_TOKEN:-$(openssl rand -hex 32)}"
+jitter_secret="${SCHEDULE_JITTER_SECRET:-$(openssl rand -hex 32)}"
+ntfy_topic="${NTFY_TOPIC:-fantasy-auto-gm-$(openssl rand -hex 12)}"
 
 (cd worker && npm ci)
 if grep -q "REPLACE_WITH_D1_DATABASE_ID" worker/wrangler.toml; then
@@ -39,8 +39,12 @@ if grep -q "REPLACE_WITH_D1_DATABASE_ID" worker/wrangler.toml; then
   exit 1
 fi
 
+run_gh() {
+  env -u GITHUB_TOKEN gh "$@"
+}
+
 set_github_secret() {
-  printf '%s' "$2" | gh secret set "$1" --repo "$repository"
+  printf '%s' "$2" | run_gh secret set "$1" --repo "$repository"
 }
 
 set_worker_secret() {
@@ -57,13 +61,13 @@ set_github_secret APPROVAL_SIGNING_SECRET "$signing_secret"
 set_github_secret APPROVAL_INGEST_TOKEN "$ingest_token"
 set_github_secret SCHEDULE_JITTER_SECRET "$jitter_secret"
 
-gh variable set FANTASY_WEEK --body "$fantasy_week" --repo "$repository"
-gh variable set LEAGUE_KEY --body "$LEAGUE_KEY" --repo "$repository"
-gh variable set TEAM_KEY --body "$TEAM_KEY" --repo "$repository"
-gh variable set WRITES_ENABLED --body "false" --repo "$repository"
-gh variable set LINEUP_WRITES_ENABLED --body "false" --repo "$repository"
-gh variable set FAB_WRITES_ENABLED --body "false" --repo "$repository"
-gh variable set TRADE_WRITES_ENABLED --body "false" --repo "$repository"
+run_gh variable set FANTASY_WEEK --body "$fantasy_week" --repo "$repository"
+run_gh variable set LEAGUE_KEY --body "$LEAGUE_KEY" --repo "$repository"
+run_gh variable set TEAM_KEY --body "$TEAM_KEY" --repo "$repository"
+run_gh variable set WRITES_ENABLED --body "false" --repo "$repository"
+run_gh variable set LINEUP_WRITES_ENABLED --body "false" --repo "$repository"
+run_gh variable set FAB_WRITES_ENABLED --body "false" --repo "$repository"
+run_gh variable set TRADE_WRITES_ENABLED --body "false" --repo "$repository"
 
 set_worker_secret SIGNING_SECRET "$signing_secret"
 set_worker_secret INGEST_TOKEN "$ingest_token"

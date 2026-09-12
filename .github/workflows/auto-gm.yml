@@ -72,6 +72,7 @@ jobs:
           [[ "$job" == "pre-kickoff" ]] && job="lineup"
           echo "job=$job" >> "$GITHUB_OUTPUT"
       - name: Apply deterministic weekly jitter
+        if: github.event_name == 'schedule'
         run: python -m app.jitter "${{ steps.route.outputs.job }}" --maximum-seconds 600
       - name: Run observation and recommendation cycle
         if: steps.route.outputs.job != 'digest' && steps.route.outputs.job != 'sync'

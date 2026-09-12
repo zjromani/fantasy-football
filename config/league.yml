@@ -1,7 +1,7 @@
 name: Gamblers Anonymous
 league_id: "196780"
-league_key:
-team_key:
+league_key: "nfl.l.196780"
+team_key: "nfl.l.196780.t.6"
 roster:
   QB: 1
   WR: 2

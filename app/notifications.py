@@ -7,12 +7,21 @@ import httpx
 
 from .config import Settings, get_settings
 
+PRIORITY_MAP: dict[str, int] = {
+    "min": 1,
+    "low": 2,
+    "default": 3,
+    "high": 4,
+    "urgent": 5,
+    "max": 5,
+}
+
 
 @dataclass(frozen=True)
 class Notification:
     title: str
     message: str
-    priority: str = "default"
+    priority: str | int = "default"
     approve_url: str | None = None
     ignore_url: str | None = None
 
@@ -30,11 +39,16 @@ class NtfyClient:
     def publish(self, notification: Notification) -> None:
         if not self.settings.ntfy_topic:
             raise RuntimeError("NTFY_TOPIC is required")
+        priority = (
+            PRIORITY_MAP.get(str(notification.priority).lower(), 3)
+            if isinstance(notification.priority, str)
+            else max(1, min(5, int(notification.priority)))
+        )
         payload: dict[str, object] = {
             "topic": self.settings.ntfy_topic,
             "title": notification.title,
             "message": notification.message,
-            "priority": notification.priority,
+            "priority": priority,
         }
         if notification.approve_url:
             payload["actions"] = [
