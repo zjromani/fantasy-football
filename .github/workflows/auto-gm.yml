@@ -11,7 +11,7 @@ on:
     - cron: "11 13 * * *"
     - cron: "23 15 * * 2"
     - cron: "37 16 * * *"
-    - cron: "7,37 16-23 * * 0"
+    - cron: "7,37 14-21 * * 0"
     - cron: "41 14 * * 1"
 
 permissions:
@@ -63,7 +63,7 @@ jobs:
           job="${{ github.event.inputs.job }}"
           if [[ -z "$job" ]]; then
             case "${{ github.event.schedule }}" in
-              "11 13 * * *"|"7,37 16-23 * * 0") job="lineup" ;;
+              "11 13 * * *"|"7,37 14-21 * * 0") job="lineup" ;;
               "23 15 * * 2") job="fab" ;;
               "37 16 * * *") job="trades" ;;
               "41 14 * * 1") job="digest" ;;
