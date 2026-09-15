@@ -36,6 +36,14 @@ terminal Yahoo success or failure receipt.
 If Yahoo returns 401, 403, or 405, keep the kill switch off and execute the
 recorded payload manually in Yahoo. Do not use browser automation as a bypass.
 
+## Yahoo app approval gate
+
+`Fantasy Auto-GM` and `Execute Fantasy Approval` skip all jobs until repository
+variable `YAHOO_APP_APPROVED=true`. Leave it unset while Yahoo reviews the
+developer app so scheduled and dispatched Yahoo runs do not fire. CI continues
+normally. After Yahoo approves the app, set the variable and resume the write
+rollout below.
+
 ## Kill switch
 
 Set repository variable `WRITES_ENABLED=false`. This takes effect on the next
