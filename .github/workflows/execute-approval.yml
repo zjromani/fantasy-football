@@ -1,5 +1,7 @@
 name: Execute Fantasy Approval
 
+# Paused until the Yahoo Fantasy developer app is approved.
+# Re-enable by setting repository variable YAHOO_APP_APPROVED=true.
 on:
   workflow_dispatch:
     inputs:
@@ -23,6 +25,7 @@ concurrency:
 
 jobs:
   execute:
+    if: ${{ vars.YAHOO_APP_APPROVED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
