@@ -127,9 +127,11 @@ scripts/bootstrap.sh zjromani/fantasy-football 1
 
 ## Rollout
 
-Run `make verify` and two complete dry-run cycles. Review every generated
-lineup, FAB, and trade proposal. Probe an identical roster before player locks,
-then record the result. Enable each category separately after its review, then
-enable the global `WRITES_ENABLED=true` kill switch.
+After Yahoo approves the developer app, set `YAHOO_APP_APPROVED=true` so the
+Auto-GM and approval workflows can run. Then run `make verify` and two complete
+dry-run cycles. Review every generated lineup, FAB, and trade proposal. Probe an
+identical roster before player locks, then record the result. Enable each
+category separately after its review, then enable the global
+`WRITES_ENABLED=true` kill switch.
 
 See `RUNBOOK.md` for incidents, provider outages, approvals, and manual fallback.
