@@ -8,6 +8,8 @@ from .identity import normalize_name
 from .value import score_projected_stats
 
 YAHOO_STAT_IDS = {
+    "2": "completion",
+    "3": "incomplete",
     "4": "pass_yd",
     "5": "pass_td",
     "6": "pass_int",
@@ -16,7 +18,9 @@ YAHOO_STAT_IDS = {
     "11": "reception",
     "12": "rec_yd",
     "13": "rec_td",
-    "18": "return_yd",
+    "15": "return_td",
+    "16": "two_point",
+    "18": "fumble_lost",
     "31": "fumble_lost",
 }
 
@@ -247,8 +251,8 @@ def normalize_snapshot(
 def extract_yahoo_settings(payload: Any) -> dict[str, dict[str, float | int]]:
     roster: dict[str, int] = {}
     scoring: dict[str, float] = {}
-    names_by_id = {}
-    values_by_id = {}
+    names_by_id: dict[str, tuple[str, str]] = {}
+    values_by_id: dict[str, float] = {}
     bonuses_by_id: dict[str, list[tuple[int, float]]] = {}
     for item in _walk(payload):
         roster_position = item.get("roster_position")
@@ -257,14 +261,29 @@ def extract_yahoo_settings(payload: Any) -> dict[str, dict[str, float | int]]:
             count = roster_position.get("count")
             if position and count is not None:
                 roster[str(position)] = int(count)
-        stat = item.get("stat")
-        if isinstance(stat, dict) and "stat_id" in stat:
+        elif isinstance(roster_position, list):
+            flattened = _collapse(roster_position)
+            position = flattened.get("position")
+            count = flattened.get("count")
+            if position and count is not None:
+                roster[str(position)] = int(count)
+        if (
+            "position" in item
+            and "count" in item
+            and "stat_id" not in item
+            and "player_key" not in item
+        ):
+            position = item.get("position")
+            count = item.get("count")
+            if position and count is not None:
+                roster[str(position)] = int(count)
+        for stat in _iter_yahoo_stats(item):
             stat_id = str(stat["stat_id"])
-            stat_name = stat.get("display_name") or stat.get("name")
+            stat_name = stat.get("name") or stat.get("display_name")
             if stat_name:
                 names_by_id[stat_id] = (
                     str(stat_name).strip().lower(),
-                    str(stat.get("position_type", "")).upper(),
+                    _yahoo_stat_position_type(stat),
                 )
             if "value" in stat:
                 values_by_id[stat_id] = float(stat["value"])
@@ -286,6 +305,44 @@ def extract_yahoo_settings(payload: Any) -> dict[str, dict[str, float | int]]:
             for threshold, points in bonuses_by_id.get(stat_id, []):
                 scoring[f"{scoring_name}_bonus_{threshold}"] = points
     return {"roster": roster, "scoring": scoring}
+
+
+def _flatten_yahoo_stat(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return _collapse(value)
+    return {}
+
+
+def _yahoo_stat_position_type(stat: dict[str, Any]) -> str:
+    position_type = str(stat.get("position_type", "")).upper()
+    if position_type:
+        return position_type
+    stat_position_types = stat.get("stat_position_types")
+    if isinstance(stat_position_types, list) and stat_position_types:
+        first = stat_position_types[0]
+        if isinstance(first, dict):
+            return str(first.get("position_type", "")).upper()
+    position_types = stat.get("position_types")
+    if isinstance(position_types, list) and position_types:
+        first = position_types[0]
+        if isinstance(first, str):
+            return first.upper()
+        if isinstance(first, dict):
+            return str(first.get("position_type", "")).upper()
+    return ""
+
+
+def _iter_yahoo_stats(item: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    if "stat_id" in item:
+        yield item
+    stat_payload = item.get("stat")
+    if stat_payload is None:
+        return
+    flattened = _flatten_yahoo_stat(stat_payload)
+    if flattened.get("stat_id") is not None:
+        yield flattened
 
 
 def _yahoo_scoring_name(name: str, position_type: str) -> str | None:
