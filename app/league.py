@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class GmProfile(BaseModel):
-    """Named GM behavior preset; merged from built-ins and config/league.yml profiles."""
+    """GM preset from built-ins and league.yml overrides."""
 
     trade_min_ros_delta: float = 0.0
     trade_playoff_delta_floor: float = -2.0

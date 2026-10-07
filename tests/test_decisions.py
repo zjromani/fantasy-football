@@ -251,9 +251,10 @@ def test_lineup_upside_weight_prefers_higher_ceiling() -> None:
 
 def test_aggressive_fab_bid_uses_multiplier() -> None:
     aggressive = builtin_gm_profiles()["win_aggressive"]
-    policy = PolicyEngine(
-        LeagueConfig.model_validate({**league().model_dump(), "profile": "win_aggressive"})
+    league_config = LeagueConfig.model_validate(
+        {**league().model_dump(), "profile": "win_aggressive"}
     )
+    policy = PolicyEngine(league_config)
     free_agent = projection("fa", "RB", 16, status="")
     free_agent = Projection(
         player_key="fa",
