@@ -33,6 +33,7 @@ class AutoGM:
         self.yahoo = yahoo
         self.ntfy = ntfy
         self.policy = PolicyEngine(league)
+        self.gm_profile = league.gm_profile()
 
     def recommend_all(
         self, state: dict[str, Any], *, only: set[str] | None = None
@@ -135,7 +136,7 @@ class AutoGM:
                     Decision(
                         kind="ir" if ir_moves else "lineup",
                         score=lineup.delta,
-                        summary=(
+                        summary=self._summarize(
                             f"Optimize lineup for +{lineup.delta:.2f} projected points"
                         ),
                         payload={
@@ -182,13 +183,14 @@ class AutoGM:
                     self.league.fab.weekly_claim_limit
                     - int(state.get("weekly_fab_claims", 0)),
                 ),
+                profile=self.gm_profile,
             )
             for move in fab_moves:
                 decisions.append(
                     Decision(
                         kind="fab",
                         score=move.net_ros_gain,
-                        summary=move.summary,
+                        summary=self._summarize(move.summary),
                         payload={
                             "league_key": state["league_key"],
                             "team_key": state["team_key"],
@@ -209,6 +211,7 @@ class AutoGM:
                 send=[projections[key] for key in trade["send_player_keys"]],
                 receive=[projections[key] for key in trade["receive_player_keys"]],
                 roster_need=state.get("roster_need", {}),
+                profile=self.gm_profile,
             )
             if package.eligible and trade.get("deadline"):
                 sent_names = ", ".join(
@@ -221,7 +224,7 @@ class AutoGM:
                     Decision(
                         kind="trade_accept",
                         score=package.score,
-                        summary=(
+                        summary=self._summarize(
                             f"Accept trade: send {sent_names}; receive "
                             f"{received_names}; ROS {package.ros_delta:+.1f}, "
                             f"playoffs {package.playoff_delta:+.1f}, "
@@ -244,10 +247,23 @@ class AutoGM:
                 state.get("opponents", {}).items() if "trades" in selected else []
             )
         }
+        ros_ranks = {
+            key: int(value) for key, value in state.get("ros_ranks", {}).items()
+        }
+        manually_protected = set(state.get("protected_player_keys", []))
+        tradable_keys = {
+            player.player_key
+            for player in roster_projections
+            if not self.policy.is_protected(
+                player, ros_ranks.get(player.player_key), manually_protected
+            )
+        }
         for opponent_team_key, package in rank_outbound_trades(
             roster=roster_projections,
             opponents=opponents,
             roster_need=state.get("roster_need", {}),
+            profile=self.gm_profile,
+            tradable_player_keys=tradable_keys,
         ):
             if not state.get("trade_deadline"):
                 continue
@@ -261,7 +277,7 @@ class AutoGM:
                 Decision(
                     kind="trade_propose",
                     score=package.score,
-                    summary=(
+                    summary=self._summarize(
                         f"Propose to {opponent_team_key}: send {sent_names}; "
                         f"receive {received_names}; ROS {package.ros_delta:+.1f}, "
                         f"playoffs {package.playoff_delta:+.1f}, "
@@ -466,6 +482,9 @@ class AutoGM:
                 {"transaction_key": watch["transaction_key"], "status": status}
             )
         return results
+
+    def _summarize(self, message: str) -> str:
+        return f"[{self.league.profile}] {message}"
 
     def _can_execute(self, decision: Decision) -> bool:
         if decision.requires_approval or self.settings.dry_run:

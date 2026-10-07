@@ -38,6 +38,7 @@ roster:
   BN: 2
 scoring:
   rush_yd: 0.125
+profile: balanced
 """.strip()
     )
 

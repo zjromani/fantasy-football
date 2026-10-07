@@ -21,7 +21,11 @@ def optimize_lineup(
     league: LeagueConfig,
     roster: list[RosterPlayer],
     projections: dict[str, Projection],
+    *,
+    upside_weight: float | None = None,
 ) -> LineupPlan:
+    if upside_weight is None:
+        upside_weight = league.gm_profile().lineup_upside_weight
     starter_slots = []
     for slot, count in league.roster.items():
         if slot not in {"BN", "IR"}:
@@ -65,12 +69,14 @@ def optimize_lineup(
                     index + 1,
                     [candidate for candidate in remaining if candidate != player],
                     positions,
-                    score + projection.week_points,
+                    score + _starter_value(projection, upside_weight),
                 )
                 positions.pop(player.player_key)
 
     locked_score = sum(
-        projections[key].week_points for key in locked_positions if key in projections
+        _starter_value(projections[key], upside_weight)
+        for key in locked_positions
+        if key in projections
     )
     assign(0, candidates, {}, locked_score)
     if best_score == float("-inf"):
@@ -87,13 +93,17 @@ def optimize_lineup(
     positions.update(locked_positions)
     positions.update(best_positions)
     current_score = sum(
-        projections[player.player_key].week_points
+        _starter_value(projections[player.player_key], upside_weight)
         for player in roster
         if player.selected_position not in {"BN", "IR"}
         and player.player_key in projections
         and _can_start(projections[player.player_key])
     )
     return LineupPlan(positions, round(best_score, 2), round(current_score, 2))
+
+
+def _starter_value(projection: Projection, upside_weight: float) -> float:
+    return projection.week_points + upside_weight * projection.volatility
 
 
 def _can_start(projection: Projection | None) -> bool:

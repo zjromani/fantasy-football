@@ -2,6 +2,25 @@ name: Gamblers Anonymous
 league_id: "196780"
 league_key: "nfl.l.196780"
 team_key: "nfl.l.196780.t.6"
+# GM behavior preset: balanced | win_aggressive
+# win_aggressive — higher FAB caps/bids, bolder lineup upside weighting,
+# relaxed trade floors, 2-for-1 consolidation proposals, more trade volume.
+profile: win_aggressive
+profiles:
+  balanced: {}
+  win_aggressive:
+    trade_min_ros_delta: -1.0
+    trade_playoff_delta_floor: -5.0
+    trade_structural_delta_floor: -0.5
+    trade_max_risk_delta: 4.0
+    trade_proposal_limit: 10
+    trade_two_for_one_enabled: true
+    fab_bid_multiplier: 1.35
+    fab_min_ros_gain: 0.5
+    fab_standard_max_percent_override: 25
+    fab_starter_vacancy_max_percent_override: 55
+    protected_ros_rank: 24
+    lineup_upside_weight: 0.15
 roster:
   QB: 1
   WR: 2
