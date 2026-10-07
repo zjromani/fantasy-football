@@ -43,20 +43,27 @@ class PolicyEngine:
         )
 
     def fab_bid_cap(self, budget_remaining: int, starter_vacancy: bool) -> int:
-        percent = (
-            self.league.fab.starter_vacancy_max_percent
-            if starter_vacancy
-            else self.league.fab.standard_max_percent
-        )
+        profile = self.league.gm_profile()
+        if starter_vacancy:
+            percent = (
+                profile.fab_starter_vacancy_max_percent_override
+                or self.league.fab.starter_vacancy_max_percent
+            )
+        else:
+            percent = (
+                profile.fab_standard_max_percent_override
+                or self.league.fab.standard_max_percent
+            )
         return max(0, int(budget_remaining * percent / 100))
 
     def is_protected(
         self, player: Projection, ros_rank: int | None, manual: set[str]
     ) -> bool:
+        threshold = self.league.gm_profile().protected_ros_rank
         return (
             player.player_key in manual
             or player.player_key in self.league.protected_player_keys
-            or (ros_rank is not None and ros_rank <= 30)
+            or (ros_rank is not None and ros_rank <= threshold)
         )
 
     def _max_age(self, kind: ActionKind) -> timedelta:

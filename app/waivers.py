@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .domain import Projection
+from .league import GmProfile
 from .policy import PolicyEngine
 
 
@@ -25,7 +26,9 @@ def rank_fab_moves(
     manually_protected: set[str],
     starter_vacancies: set[str],
     limit: int = 5,
+    profile: GmProfile | None = None,
 ) -> list[FabRecommendation]:
+    rules = profile or GmProfile()
     droppable = [
         player
         for player in roster
@@ -45,11 +48,12 @@ def rank_fab_moves(
         )
         drop_value = drop.ros_points if drop else 0.0
         gain = round(candidate.ros_points - drop_value, 2)
-        if gain <= 0:
+        if gain < rules.fab_min_ros_gain:
             continue
         vacancy = candidate.position in starter_vacancies
         cap = policy.fab_bid_cap(budget_remaining, vacancy)
-        bid = min(cap, max(1, round(gain / max(candidate.ros_points, 1) * 100)))
+        raw_bid = gain / max(candidate.ros_points, 1) * 100 * rules.fab_bid_multiplier
+        bid = min(cap, max(1, round(raw_bid)))
         recommendations.append(
             FabRecommendation(
                 add_player_key=candidate.player_key,

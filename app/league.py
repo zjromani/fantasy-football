@@ -7,6 +7,45 @@ import yaml
 from pydantic import BaseModel, Field
 
 
+class GmProfile(BaseModel):
+    """GM preset from built-ins and league.yml overrides."""
+
+    trade_min_ros_delta: float = 0.0
+    trade_playoff_delta_floor: float = -2.0
+    trade_structural_delta_floor: float = 0.0
+    trade_max_risk_delta: float = 2.0
+    trade_proposal_limit: int = 5
+    trade_two_for_one_enabled: bool = False
+
+    fab_bid_multiplier: float = 1.0
+    fab_min_ros_gain: float = 0.0
+    fab_standard_max_percent_override: int | None = None
+    fab_starter_vacancy_max_percent_override: int | None = None
+
+    protected_ros_rank: int = 30
+    lineup_upside_weight: float = 0.0
+
+
+def builtin_gm_profiles() -> dict[str, GmProfile]:
+    return {
+        "balanced": GmProfile(),
+        "win_aggressive": GmProfile(
+            trade_min_ros_delta=-1.0,
+            trade_playoff_delta_floor=-5.0,
+            trade_structural_delta_floor=-0.5,
+            trade_max_risk_delta=4.0,
+            trade_proposal_limit=10,
+            trade_two_for_one_enabled=True,
+            fab_bid_multiplier=1.35,
+            fab_min_ros_gain=0.5,
+            fab_standard_max_percent_override=25,
+            fab_starter_vacancy_max_percent_override=55,
+            protected_ros_rank=24,
+            lineup_upside_weight=0.15,
+        ),
+    }
+
+
 class FabPolicy(BaseModel):
     weekly_claim_limit: int = 2
     standard_max_percent: int = 15
@@ -32,6 +71,15 @@ class LeagueConfig(BaseModel):
     fab: FabPolicy = Field(default_factory=FabPolicy)
     freshness: FreshnessPolicy = Field(default_factory=FreshnessPolicy)
     protected_player_keys: list[str] = Field(default_factory=list)
+    profile: str = "win_aggressive"
+    profiles: dict[str, GmProfile] = Field(default_factory=dict)
+
+    def gm_profile(self) -> GmProfile:
+        merged = dict(builtin_gm_profiles())
+        merged.update(self.profiles)
+        if self.profile not in merged:
+            raise ValueError(f"Unknown GM profile {self.profile!r}")
+        return merged[self.profile]
 
     @classmethod
     def load(cls, path: str | Path) -> LeagueConfig:

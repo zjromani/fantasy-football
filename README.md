@@ -65,8 +65,10 @@ incoming-trade, and outbound-trade decisions, then applies policy.
   and are atomically consumed once by Cloudflare D1.
 - Stale data blocks transactions. Only explicitly marked safe lineup corrections
   may proceed from stale data.
-- Top-30 ROS players and `protected_player_keys` cannot be dropped.
-- FAB is limited to two claims weekly, 15% normally, and 40% for a starter vacancy.
+- Top ROS players (rank threshold set by GM profile) and `protected_player_keys`
+  cannot be dropped.
+- FAB is limited to two claims weekly; bid caps follow `config/league.yml` and the
+  active GM profile (`profile: win_aggressive` by default for league 196780).
 - `WRITES_ENABLED=false` is the repository-wide kill switch. Observation,
   recommendations, and redacted audits continue.
 - Raw provider responses are temporary and never uploaded as artifacts.

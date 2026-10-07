@@ -189,7 +189,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         state["trade_deadline"] = league.trade_deadline
         selected = None if args.only == "all" else {args.only}
         decision_ids = gm.recommend_all(state, only=selected)
-        return emit({"status": "ok", "decision_ids": decision_ids})
+        return emit(
+            {
+                "status": "ok",
+                "decision_ids": decision_ids,
+                "gm_profile": league.profile,
+            }
+        )
 
     if args.command == "execute":
         decision = store.decision(args.decision_id)
