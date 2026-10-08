@@ -1,0 +1,113 @@
+{
+  "source_updated_at": "2026-10-08T00:00:00+00:00",
+  "week": 6,
+  "yahoo": {
+    "roster": {
+      "team": [
+        {
+          "team_key": "461.p.196780.t.1",
+          "name": "Test Team",
+          "roster": {
+            "0": {
+              "players": {
+                "0": {
+                  "player": [
+                    {"player_key": "461.p.33537"},
+                    {"name": {"full": "De'Von Achane"}},
+                    {"editorial_team_abbr": "MIA"},
+                    {"display_position": "RB"},
+                    {"eligible_positions": [{"position": "RB"}]},
+                    {"selected_position": [{"position": "RB"}]}
+                  ]
+                },
+                "1": {
+                  "player": [
+                    {"player_key": "461.p.10094"},
+                    {"name": {"full": "Packers"}},
+                    {"editorial_team_abbr": "GB"},
+                    {"display_position": "DEF"},
+                    {"eligible_positions": [{"position": "DEF"}]},
+                    {"selected_position": [{"position": "DEF"}]}
+                  ]
+                },
+                "2": {
+                  "player": [
+                    {"player_key": "461.p.31264"},
+                    {"name": {"full": "Marcus Jones"}},
+                    {"editorial_team_abbr": "NE"},
+                    {"display_position": "CB"},
+                    {"eligible_positions": [{"position": "CB"}, {"position": "DB"}]},
+                    {"selected_position": [{"position": "BN"}]}
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "available_players": {},
+    "teams": {},
+    "transactions": {}
+  },
+  "fantasypros": {
+    "weekly": {
+      "data": {
+        "players": [
+          {
+            "player_name": "De Von Achane",
+            "team": "MIA",
+            "position": "RB",
+            "fpid": "23133",
+            "stats": {"rush_yd": 72, "rush_td": 0.6, "rec_yd": 18}
+          },
+          {
+            "player_name": "Green Bay Packers",
+            "team": "GB",
+            "position": "DST",
+            "fpid": "8090",
+            "fpts": 8.2,
+            "stats": {"def_pa": 20, "def_sack": 2.4}
+          },
+          {
+            "player_name": "Marcus Jones",
+            "team": "NE",
+            "position": "CB",
+            "fpid": "24781",
+            "stats": {"def_tackle": 4.1, "def_pd": 0.3}
+          }
+        ]
+      },
+      "fetched_at": "2026-10-08T00:00:00+00:00"
+    },
+    "ros": {
+      "data": {
+        "players": [
+          {
+            "player_name": "De Von Achane",
+            "team": "MIA",
+            "position": "RB",
+            "rank_ecr": 12,
+            "fpid": "23133"
+          },
+          {
+            "player_name": "Green Bay Packers",
+            "team": "GB",
+            "position": "DST",
+            "rank_ecr": 9,
+            "fpid": "8090"
+          },
+          {
+            "player_name": "Marcus Jones",
+            "team": "NE",
+            "position": "CB",
+            "rank_ecr": 142,
+            "fpid": "24781"
+          }
+        ]
+      },
+      "fetched_at": "2026-10-08T00:00:00+00:00"
+    },
+    "playoffs": {}
+  }
+}
