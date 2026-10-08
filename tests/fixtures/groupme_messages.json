@@ -1,0 +1,35 @@
+{
+  "meta": { "code": 200 },
+  "response": {
+    "count": 2,
+    "messages": [
+      {
+        "attachments": [],
+        "avatar_url": "https://example.com/a.png",
+        "created_at": 1728000000.0,
+        "favorited_by": [],
+        "group_id": "12345678",
+        "id": "msg-100",
+        "name": "Mike",
+        "sender_id": "user-1",
+        "sender_type": "user",
+        "source_guid": "guid-100",
+        "system": false,
+        "text": "Anyone trading? I need a RB badly.",
+        "user_id": "user-1"
+      },
+      {
+        "attachments": [],
+        "created_at": 1728000060.0,
+        "favorited_by": [],
+        "group_id": "12345678",
+        "id": "msg-101",
+        "name": "System",
+        "sender_type": "system",
+        "system": true,
+        "text": "Mike joined the group.",
+        "user_id": "system"
+      }
+    ]
+  }
+}

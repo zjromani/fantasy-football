@@ -51,7 +51,12 @@ python -m app.cli execute --decision-id 1
 python -m app.cli probe-write --week 1 --positions current-roster.json
 python -m app.cli digest
 python -m app.cli export-audit
+python -m app.cli poll-groupme
 ```
+
+Optional GroupMe league chat (read-only): set `GROUPME_ACCESS_TOKEN` and
+`GROUPME_GROUP_ID` (or enable `groupme` in `config/league.yml`). See project
+docs `groupme-mcp-setup.md` in the Fantasy Automation Cursor project store.
 
 `run-live` is the scheduled entry point. It retrieves Yahoo state and
 FantasyPros weekly/ROS data, normalizes player identities, creates lineup, FAB,

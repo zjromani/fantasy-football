@@ -58,6 +58,14 @@ class FreshnessPolicy(BaseModel):
     rest_of_season_hours: int = 72
 
 
+class GroupMeConfig(BaseModel):
+    """League GroupMe chat (group id only; token stays in env)."""
+
+    group_id: str | None = None
+    enabled: bool = False
+    members: dict[str, str] = Field(default_factory=dict)
+
+
 class LeagueConfig(BaseModel):
     name: str
     league_id: str
@@ -73,6 +81,7 @@ class LeagueConfig(BaseModel):
     protected_player_keys: list[str] = Field(default_factory=list)
     profile: str = "win_aggressive"
     profiles: dict[str, GmProfile] = Field(default_factory=dict)
+    groupme: GroupMeConfig = Field(default_factory=GroupMeConfig)
 
     def gm_profile(self) -> GmProfile:
         merged = dict(builtin_gm_profiles())

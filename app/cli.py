@@ -75,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     probe.add_argument("--positions", required=True)
 
     commands.add_parser("poll-transactions")
+    commands.add_parser("poll-groupme")
 
     digest = commands.add_parser("digest")
     digest.add_argument("--output")
@@ -187,6 +188,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             extract_yahoo_settings(raw_snapshot["yahoo"]["league"])
         )
         state["trade_deadline"] = league.trade_deadline
+        groupme = gm.poll_groupme()
+        state["groupme_intel"] = groupme
         selected = None if args.only == "all" else {args.only}
         decision_ids = gm.recommend_all(state, only=selected)
         return emit(
@@ -194,6 +197,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "status": "ok",
                 "decision_ids": decision_ids,
                 "gm_profile": league.profile,
+                "groupme": groupme,
             }
         )
 
@@ -257,6 +261,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "poll-transactions":
         return emit({"status": "ok", "transactions": gm.poll_transactions()})
+
+    if args.command == "poll-groupme":
+        return emit(gm.poll_groupme())
 
     if args.command in {"digest", "export-audit"}:
         output = store.export_redacted()
