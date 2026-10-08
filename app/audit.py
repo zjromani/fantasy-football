@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -97,6 +98,21 @@ class AuditStore:
                     payload_hash TEXT NOT NULL,
                     status TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS groupme_sync_state (
+                    group_id TEXT PRIMARY KEY,
+                    last_message_id TEXT,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS groupme_messages (
+                    message_id TEXT PRIMARY KEY,
+                    group_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    system INTEGER NOT NULL,
+                    fetched_at TEXT NOT NULL
                 );
                 """
             )
@@ -322,6 +338,57 @@ class AuditStore:
                 """,
                 (transaction_key, payload_hash, status, utc_now()),
             )
+
+    def groupme_last_message_id(self, group_id: str) -> str | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT last_message_id FROM groupme_sync_state WHERE group_id = ?",
+                (group_id,),
+            ).fetchone()
+        if not row or row["last_message_id"] is None:
+            return None
+        return str(row["last_message_id"])
+
+    def set_groupme_last_message_id(self, group_id: str, message_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO groupme_sync_state(group_id, last_message_id, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(group_id) DO UPDATE SET
+                    last_message_id=excluded.last_message_id,
+                    updated_at=excluded.updated_at
+                """,
+                (group_id, message_id, utc_now()),
+            )
+
+    def save_groupme_messages(self, messages: Sequence[Any]) -> list[Any]:
+        saved: list[Any] = []
+        now = utc_now()
+        with self.connect() as connection:
+            for message in messages:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO groupme_messages(
+                        message_id, group_id, user_id, name, text,
+                        created_at, system, fetched_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(message_id) DO NOTHING
+                    """,
+                    (
+                        message.id,
+                        message.group_id,
+                        message.user_id,
+                        message.name,
+                        message.text,
+                        message.created_at,
+                        int(message.system),
+                        now,
+                    ),
+                )
+                if cursor.rowcount == 1:
+                    saved.append(message)
+        return saved
 
     def pending_transactions(self) -> list[dict[str, str]]:
         with self.connect() as connection:

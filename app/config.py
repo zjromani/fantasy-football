@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +44,12 @@ class Settings(BaseSettings):
     fab_writes_enabled: bool = False
     trade_writes_enabled: bool = False
     schedule_jitter_secret: str = "development-only"
+
+    groupme_access_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GROUPME_ACCESS_TOKEN", "GROUPME_TOKEN"),
+    )
+    groupme_group_id: str | None = None
 
 
 @lru_cache

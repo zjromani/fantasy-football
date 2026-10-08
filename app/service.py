@@ -8,6 +8,7 @@ from .approvals import ApprovalGateway, ApprovalService
 from .audit import AuditStore, canonical_json, hash_payload
 from .config import Settings
 from .domain import Decision, Projection, RosterPlayer
+from .groupme import GroupMePoller
 from .league import LeagueConfig
 from .lineup import optimize_lineup
 from .notifications import Notification, NtfyClient
@@ -428,6 +429,13 @@ class AutoGM:
             raise RuntimeError("Yahoo accepted the write without a transaction key")
         self.store.finish_execution(payload_digest, "executed")
         return "executed"
+
+    def poll_groupme(self) -> dict[str, Any]:
+        return GroupMePoller(
+            settings=self.settings,
+            league=self.league,
+            store=self.store,
+        ).poll()
 
     def poll_transactions(self) -> list[dict[str, str]]:
         if not self.yahoo:
