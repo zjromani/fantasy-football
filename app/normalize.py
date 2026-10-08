@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
-from .identity import normalize_name
+from .identity import index_provider_item, lookup_provider_entry
 from .value import score_projected_stats
 
 YAHOO_STAT_IDS = {
@@ -94,20 +94,15 @@ def normalize_snapshot(
     }
     all_players = list(all_players_by_key.values())
     for player in all_players:
-        identity = (
-            normalize_name(player["name"]),
-            player.get("nfl_team", "").upper(),
-        )
-        weekly_data = weekly.get(identity, {})
-        ros_data = ros.get(identity, {})
-        playoff_data = [week.get(identity, {}) for week in playoff_projections]
+        weekly_data = lookup_provider_entry(weekly, player)
+        ros_data = lookup_provider_entry(ros, player)
+        playoff_data = [
+            lookup_provider_entry(week, player) for week in playoff_projections
+        ]
         if player["player_key"] in roster_keys:
-            if not weekly_data or not weekly_data.get("_has_stats"):
-                projection_errors.append(
-                    f"missing weekly projection for {player['name']}"
-                )
-            if not ros_data:
-                projection_errors.append(f"missing ROS ranking for {player['name']}")
+            projection_errors.extend(
+                validate_projection_coverage(player, weekly_data, ros_data)
+            )
         week_points = (
             score_projected_stats(
                 _projected_stats(weekly_data, player["position"]), scoring
@@ -216,13 +211,7 @@ def normalize_snapshot(
         "ros_ranks": {
             player["player_key"]: int(
                 _number(
-                    ros.get(
-                        (
-                            normalize_name(player["name"]),
-                            player.get("nfl_team", "").upper(),
-                        ),
-                        {},
-                    ),
+                    lookup_provider_entry(ros, player),
                     "rank",
                     "rank_ecr",
                     "consensus_rank",
@@ -451,21 +440,55 @@ def _yahoo_players(payload: Any) -> list[dict[str, Any]]:
     return list(result.values())
 
 
+def validate_projection_coverage(
+    player: dict[str, Any],
+    weekly_data: dict[str, Any],
+    ros_data: dict[str, Any],
+) -> list[str]:
+    errors = []
+    if not _has_weekly_projection(weekly_data):
+        errors.append(f"missing weekly projection for {player['name']}")
+    if not _has_ros_ranking(ros_data):
+        errors.append(f"missing ROS ranking for {player['name']}")
+    return errors
+
+
+def _has_weekly_projection(data: dict[str, Any]) -> bool:
+    if not data:
+        return False
+    if data.get("_has_stats"):
+        return True
+    for key in (
+        "fpts",
+        "fantasy_points",
+        "points",
+        "projected_points",
+        "pass_att",
+        "pass_yd",
+        "rush_yd",
+        "rec_yd",
+        "def_pa",
+        "def_sack",
+    ):
+        if data.get(key) not in {None, ""}:
+            return True
+    return False
+
+
+def _has_ros_ranking(data: dict[str, Any]) -> bool:
+    if not data:
+        return False
+    for key in ("rank", "rank_ecr", "consensus_rank", "fpid", "player_id", "id"):
+        if data.get(key) not in {None, ""}:
+            return True
+    return _has_weekly_projection(data)
+
+
 def _provider_players(payload: Any) -> dict[tuple[str, str], dict[str, Any]]:
-    result = {}
+    result: dict[tuple[str, str], dict[str, Any]] = {}
     for item in _walk(payload):
-        name = item.get("player_name") or item.get("name")
-        if not isinstance(name, str):
-            continue
-        team = str(
-            item.get("team") or item.get("team_id") or item.get("player_team_id") or ""
-        ).upper()
-        stats = item.get("stats", {})
-        result[(normalize_name(name), team)] = {
-            **item,
-            **(stats if isinstance(stats, dict) else {}),
-            "_has_stats": isinstance(stats, dict) and bool(stats),
-        }
+        if isinstance(item, dict):
+            index_provider_item(result, item)
     return result
 
 
