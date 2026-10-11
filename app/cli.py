@@ -198,6 +198,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             team_key=league.team_key,
             scoring=league.scoring,
             roster_slots=league.roster,
+            projection_coverage_strict=settings.projection_coverage_strict,
         )
         state["settings_drift"] = league.validate_yahoo_settings(
             extract_yahoo_settings(raw_snapshot["yahoo"]["league"])

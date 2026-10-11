@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
@@ -16,6 +17,8 @@ from .policy import PolicyEngine
 from .trades import evaluate_trade, rank_outbound_trades
 from .waivers import rank_fab_moves
 from .yahoo_client import YahooClient, YahooWriteUnavailable
+
+logger = logging.getLogger(__name__)
 
 
 class AutoGM:
@@ -70,9 +73,33 @@ class AutoGM:
                 "Yahoo league settings drift: " + "; ".join(state["settings_drift"])
             )
         if state.get("projection_errors"):
-            raise RuntimeError(
-                "Projection coverage failed: " + "; ".join(state["projection_errors"])
+            if self.settings.projection_coverage_strict:
+                raise RuntimeError(
+                    "Projection coverage failed: "
+                    + "; ".join(state["projection_errors"])
+                )
+            logger.warning(
+                "Projection coverage errors present but strict mode disabled: %s",
+                "; ".join(state["projection_errors"]),
             )
+        if state.get("projection_warnings"):
+            audit = state.get("projection_coverage_audit") or {}
+            logger.warning(
+                "Projection coverage gaps (lenient): %s",
+                "; ".join(state["projection_warnings"]),
+            )
+            zero_fallback = audit.get("zero_fallback_player_keys") or []
+            if zero_fallback:
+                logger.warning(
+                    "Zero projection fallback for roster players: %s",
+                    ", ".join(zero_fallback),
+                )
+            partial = audit.get("partial_coverage_player_keys") or []
+            if partial:
+                logger.warning(
+                    "Partial FantasyPros coverage (fallback values used): %s",
+                    ", ".join(partial),
+                )
         projections = {
             item["player_key"]: projection_from_dict(item)
             for item in state["projections"]
@@ -175,7 +202,8 @@ class AutoGM:
                 budget_remaining=int(state.get("fab_remaining", 0)),
                 policy=self.policy,
                 ros_ranks={
-                    key: int(value) for key, value in state.get("ros_ranks", {}).items()
+                    key: (int(value) if value is not None else None)
+                    for key, value in state.get("ros_ranks", {}).items()
                 },
                 manually_protected=set(state.get("protected_player_keys", [])),
                 starter_vacancies=set(state.get("starter_vacancies", [])),
@@ -249,7 +277,8 @@ class AutoGM:
             )
         }
         ros_ranks = {
-            key: int(value) for key, value in state.get("ros_ranks", {}).items()
+            key: (int(value) if value is not None else None)
+            for key, value in state.get("ros_ranks", {}).items()
         }
         manually_protected = set(state.get("protected_player_keys", []))
         tradable_keys = {

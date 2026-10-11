@@ -60,11 +60,13 @@ class PolicyEngine:
         self, player: Projection, ros_rank: int | None, manual: set[str]
     ) -> bool:
         threshold = self.league.gm_profile().protected_ros_rank
-        return (
-            player.player_key in manual
-            or player.player_key in self.league.protected_player_keys
-            or (ros_rank is not None and ros_rank <= threshold)
-        )
+        if player.player_key in manual:
+            return True
+        if player.player_key in self.league.protected_player_keys:
+            return True
+        if ros_rank is None:
+            return True
+        return ros_rank <= threshold
 
     def _max_age(self, kind: ActionKind) -> timedelta:
         if kind in {"lineup", "ir", "fab"}:

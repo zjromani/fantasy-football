@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
 
+from app.audit import AuditStore
+from app.config import Settings
 from app.identity import (
     compact_name,
     index_provider_item,
@@ -15,7 +18,9 @@ from app.identity import (
     normalize_name,
     provider_player_id,
 )
+from app.league import LeagueConfig
 from app.normalize import normalize_snapshot, validate_projection_coverage
+from app.service import AutoGM
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "projection_coverage_snapshot.json"
 FIXTURE = json.loads(FIXTURE_PATH.read_text())
@@ -529,6 +534,83 @@ def test_lookup_provider_entry_by_id_tries_all_provider_ids() -> None:
     match = lookup_provider_entry_by_id(ros_by_id, weekly)
 
     assert match["rank_ecr"] == 142
+
+
+def _snapshot_without_marcus_jones() -> dict:
+    snapshot = copy.deepcopy(FIXTURE)
+    snapshot["fantasypros"]["weekly"]["data"]["players"] = [
+        player
+        for player in snapshot["fantasypros"]["weekly"]["data"]["players"]
+        if player.get("player_name") != "Marcus Jones"
+    ]
+    snapshot["fantasypros"]["ros"]["data"]["players"] = [
+        player
+        for player in snapshot["fantasypros"]["ros"]["data"]["players"]
+        if player.get("player_name") != "Marcus Jones"
+    ]
+    return snapshot
+
+
+def test_lenient_projection_coverage_warns_without_blocking() -> None:
+    state = normalize_snapshot(
+        _snapshot_without_marcus_jones(),
+        league_key="461.l.196780",
+        team_key="461.p.196780.t.1",
+        projection_coverage_strict=False,
+    )
+
+    assert state["projection_errors"] == []
+    assert state["projection_warnings"]
+    audit = state["projection_coverage_audit"]
+    assert "461.p.31264" in audit["zero_fallback_player_keys"]
+    marcus = next(
+        item for item in state["projections"] if item["player_key"] == "461.p.31264"
+    )
+    assert marcus["week_points"] == 0
+    assert state["ros_ranks"]["461.p.31264"] is None
+
+
+def test_strict_projection_coverage_still_blocks_on_gaps() -> None:
+    state = normalize_snapshot(
+        _snapshot_without_marcus_jones(),
+        league_key="461.l.196780",
+        team_key="461.p.196780.t.1",
+        projection_coverage_strict=True,
+    )
+
+    assert state["projection_errors"]
+    assert state["projection_warnings"] == []
+
+
+def test_build_decisions_continues_under_lenient_projection_coverage() -> None:
+    state = normalize_snapshot(
+        _snapshot_without_marcus_jones(),
+        league_key="461.l.196780",
+        team_key="461.p.196780.t.1",
+        projection_coverage_strict=False,
+    )
+    state["settings_drift"] = []
+    state["trade_analysis_ready"] = False
+    state["trade_deadline"] = None
+    state["fab_remaining"] = 0
+
+    league = LeagueConfig.model_validate(
+        {
+            "name": "Test",
+            "league_id": "196780",
+            "league_key": "461.l.196780",
+            "team_key": "461.p.196780.t.1",
+            "roster": {"RB": 1, "DEF": 1, "BN": 1},
+            "scoring": {"rush_yd": 0.1},
+            "validation_scoring": {"rush_yd": 0.1},
+        }
+    )
+    store = AuditStore(":memory:")
+    store.migrate()
+    settings = Settings(projection_coverage_strict=False, dry_run=True)
+    gm = AutoGM(settings=settings, league=league, store=store)
+
+    gm.build_decisions(state, only={"lineup"})
 
 
 def test_map_players_uses_shared_lookup_rules() -> None:

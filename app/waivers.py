@@ -22,7 +22,7 @@ def rank_fab_moves(
     roster: list[Projection],
     budget_remaining: int,
     policy: PolicyEngine,
-    ros_ranks: dict[str, int],
+    ros_ranks: dict[str, int | None],
     manually_protected: set[str],
     starter_vacancies: set[str],
     limit: int = 5,

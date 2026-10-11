@@ -249,6 +249,32 @@ def test_lineup_upside_weight_prefers_higher_ceiling() -> None:
     assert aggressive.positions["boom"] == "RB"
 
 
+def test_unknown_ros_rank_keeps_roster_player_protected() -> None:
+    policy = PolicyEngine(league())
+    roster_player = projection("star", "RB", 12)
+    free_agent = projection("fa", "RB", 16)
+    free_agent = Projection(
+        player_key="fa",
+        name="fa",
+        position="RB",
+        nfl_team="TST",
+        week_points=16,
+        ros_points=170,
+    )
+    moves = rank_fab_moves(
+        free_agents=[free_agent],
+        roster=[roster_player],
+        budget_remaining=100,
+        policy=policy,
+        ros_ranks={"star": None},
+        manually_protected=set(),
+        starter_vacancies=set(),
+    )
+
+    assert moves
+    assert all(move.drop_player_key != "star" for move in moves)
+
+
 def test_aggressive_fab_bid_uses_multiplier() -> None:
     aggressive = builtin_gm_profiles()["win_aggressive"]
     league_config = LeagueConfig.model_validate(

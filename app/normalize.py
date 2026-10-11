@@ -67,6 +67,7 @@ def normalize_snapshot(
     team_key: str,
     scoring: dict[str, float] | None = None,
     roster_slots: dict[str, int] | None = None,
+    projection_coverage_strict: bool = True,
 ) -> dict[str, Any]:
     roster_players = _yahoo_players(snapshot["yahoo"]["roster"])
     available_players = _yahoo_players(snapshot["yahoo"]["available_players"])
@@ -98,6 +99,11 @@ def normalize_snapshot(
 
     projections = []
     projection_errors = []
+    projection_warnings = []
+    projection_coverage_audit: dict[str, list[str]] = {
+        "zero_fallback_player_keys": [],
+        "partial_coverage_player_keys": [],
+    }
     roster_keys = {player["player_key"] for player in roster_players}
     all_players_by_key = {
         player["player_key"]: player
@@ -131,14 +137,27 @@ def normalize_snapshot(
             lookup_provider_entry(week, player) for week in playoff_projections
         ]
         if player["player_key"] in roster_keys:
-            projection_errors.extend(
-                validate_projection_coverage(
-                    player,
-                    weekly_data,
-                    ros_data,
-                    game_week=int(snapshot["week"]),
-                )
+            coverage_issues = validate_projection_coverage(
+                player,
+                weekly_data,
+                ros_data,
+                game_week=int(snapshot["week"]),
             )
+            if coverage_issues:
+                has_weekly = _has_weekly_projection(weekly_data)
+                has_ros = _has_ros_ranking(ros_data)
+                if projection_coverage_strict:
+                    projection_errors.extend(coverage_issues)
+                else:
+                    projection_warnings.extend(coverage_issues)
+                    if has_weekly or has_ros:
+                        projection_coverage_audit["partial_coverage_player_keys"].append(
+                            player["player_key"]
+                        )
+                    else:
+                        projection_coverage_audit["zero_fallback_player_keys"].append(
+                            player["player_key"]
+                        )
         week_points = (
             score_projected_stats(
                 _projected_stats(weekly_data, player["position"]), scoring
@@ -237,21 +256,15 @@ def normalize_snapshot(
         ],
         "projections": projections,
         "projection_errors": projection_errors,
+        "projection_warnings": projection_warnings,
+        "projection_coverage_audit": projection_coverage_audit,
         "free_agent_keys": [
             player["player_key"]
             for player in available_players
             if player["player_key"] not in roster_keys
         ],
         "ros_ranks": {
-            player["player_key"]: int(
-                _number(
-                    lookup_provider_entry(ros, player),
-                    "rank",
-                    "rank_ecr",
-                    "consensus_rank",
-                    default=500,
-                )
-            )
+            player["player_key"]: _ros_rank(lookup_provider_entry(ros, player))
             for player in all_players
         },
         "protected_player_keys": [],
@@ -488,6 +501,20 @@ def _yahoo_bye_week(bye_weeks: Any) -> int | None:
         if isinstance(item, dict) and item.get("week") not in {None, ""}:
             return int(item["week"])
     return None
+
+
+def _ros_rank(ros_data: dict[str, Any]) -> int | None:
+    if not _has_ros_ranking(ros_data):
+        return None
+    return int(
+        _number(
+            ros_data,
+            "rank",
+            "rank_ecr",
+            "consensus_rank",
+            default=500,
+        )
+    )
 
 
 def validate_projection_coverage(
