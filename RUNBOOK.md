@@ -57,10 +57,15 @@ variable. Rotate a credential only if it may be compromised.
 
 1. Set `WRITES_ENABLED=false`.
 2. Check whether the refresh request failed or Yahoo rejected the API operation.
-3. For an invalid refresh token, repeat `oauth-url` and `oauth-exchange`.
-4. Update only the `YAHOO_REFRESH_TOKEN` GitHub secret.
-5. Verify a league/team read.
-6. Repeat the identical-roster probe before restoring writes.
+3. In the Yahoo Developer app, confirm **Redirect URI(s)** includes
+   `http://localhost:8765/callback` (must match `YAHOO_REDIRECT_URI`).
+4. For an invalid refresh token—or if the browser shows Yahoo “Please specify a
+   valid request” on authorize—pull latest, then regenerate credentials:
+   `oauth-url` (writes JSON `{state, code_verifier}` to the state file) and
+   `oauth-exchange` with the callback `code` and `state`.
+5. Update only the `YAHOO_REFRESH_TOKEN` GitHub secret.
+6. Verify a league/team read.
+7. Repeat the identical-roster probe before restoring writes.
 
 Token files are written with mode `0600`. Access and refresh tokens must never
 appear in GitHub artifacts or logs.

@@ -110,18 +110,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         yahoo = YahooClient(settings=settings)
     if args.command == "oauth-url":
         state = yahoo.new_oauth_state()
+        code_verifier = yahoo.new_code_verifier()
         state_path = Path(args.state_file)
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(state)
+        state_path.write_text(yahoo.format_oauth_state_file(state, code_verifier))
         state_path.chmod(0o600)
-        return emit({"authorization_url": yahoo.get_authorization_url(state)})
+        return emit(
+            {
+                "authorization_url": yahoo.get_authorization_url(
+                    state, code_verifier=code_verifier
+                )
+            }
+        )
 
     if args.command == "oauth-exchange":
-        expected_state = Path(args.state_file).read_text().strip()
+        expected_state, code_verifier = yahoo.parse_oauth_state_file(
+            Path(args.state_file).read_text()
+        )
         tokens = yahoo.exchange_code_for_tokens(
             args.code,
             expected_state=expected_state,
             received_state=args.state,
+            code_verifier=code_verifier,
         )
         return emit(
             {
