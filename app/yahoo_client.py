@@ -239,7 +239,7 @@ class YahooClient:
             f"<roster><coverage_type>week</coverage_type><week>{week}</week>"
             f"<players>{players}</players></roster></fantasy_content>"
         )
-        self.put_xml(f"team/{team_key}/roster", body)
+        self.put_xml(f"team/{team_key}/roster;week={week}", body)
 
     def submit_fab_claim(
         self,

@@ -58,6 +58,7 @@ def test_refresh_rotation_permissions_and_roster_xml(tmp_path: Path) -> None:
     assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
     write = requests[-1]
     assert write.method == "PUT"
+    assert write.url.path.endswith("/team/449.l.1.t.1/roster;week=3")
     assert write.headers["authorization"] == "Bearer new-access"
     assert "<week>3</week>" in write.content.decode()
     assert "<position>QB</position>" in write.content.decode()
