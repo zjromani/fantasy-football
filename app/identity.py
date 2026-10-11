@@ -199,9 +199,31 @@ def index_provider_item(
     if not isinstance(name, str):
         return
     stats = merged.get("stats", {})
+    stats_overlay = (
+        {
+            key: value
+            for key, value in stats.items()
+            if key
+            not in {
+                "fpid",
+                "player_id",
+                "id",
+                "player_name",
+                "name",
+                "team",
+                "player_team_id",
+                "team_id",
+                "position",
+                "player_position_id",
+                "position_id",
+            }
+        }
+        if isinstance(stats, dict)
+        else {}
+    )
     entry = {
         **merged,
-        **(stats if isinstance(stats, dict) else {}),
+        **stats_overlay,
         "_has_stats": isinstance(stats, dict) and bool(stats),
     }
     for key in lookup_keys_for_provider_item(merged):
@@ -234,9 +256,31 @@ def index_provider_item_by_id(
         return
     merged = normalize_fantasypros_item(item)
     stats = merged.get("stats", {})
+    stats_overlay = (
+        {
+            key: value
+            for key, value in stats.items()
+            if key
+            not in {
+                "fpid",
+                "player_id",
+                "id",
+                "player_name",
+                "name",
+                "team",
+                "player_team_id",
+                "team_id",
+                "position",
+                "player_position_id",
+                "position_id",
+            }
+        }
+        if isinstance(stats, dict)
+        else {}
+    )
     result[player_id] = {
         **merged,
-        **(stats if isinstance(stats, dict) else {}),
+        **stats_overlay,
         "_has_stats": isinstance(stats, dict) and bool(stats),
     }
 
@@ -260,6 +304,70 @@ def lookup_provider_entry_by_id(
         if match:
             return match
     return {}
+
+
+def provider_as_yahoo_player(provider_data: dict[str, Any]) -> dict[str, Any]:
+    merged = normalize_fantasypros_item(provider_data)
+    return {
+        "name": str(merged.get("player_name") or merged.get("name") or ""),
+        "nfl_team": str(
+            merged.get("team")
+            or merged.get("player_team_id")
+            or merged.get("team_id")
+            or ""
+        ),
+        "position": str(
+            merged.get("position")
+            or merged.get("player_position_id")
+            or merged.get("position_id")
+            or ""
+        ),
+    }
+
+
+def lookup_ros_by_compact_name_team(
+    ros_by_id: dict[str, dict[str, Any]], player: dict[str, Any]
+) -> dict[str, Any]:
+    if not ros_by_id:
+        return {}
+    if "player_name" in player or "fpid" in player or "player_id" in player:
+        proxy = provider_as_yahoo_player(player)
+    else:
+        proxy = player
+    name = str(proxy.get("name") or "")
+    team = normalize_team(str(proxy.get("nfl_team") or ""))
+    if not name or not team:
+        return {}
+    target = compact_name(name)
+    for entry in ros_by_id.values():
+        entry_name = str(entry.get("player_name") or entry.get("name") or "")
+        entry_team = normalize_team(
+            str(entry.get("team") or entry.get("player_team_id") or "")
+        )
+        if entry_team == team and compact_name(entry_name) == target:
+            return entry
+    return {}
+
+
+def lookup_ros_entry(
+    ros_index: dict[tuple[str, str], dict[str, Any]],
+    ros_by_id: dict[str, dict[str, Any]],
+    yahoo_player: dict[str, Any],
+    weekly_data: dict[str, Any],
+) -> dict[str, Any]:
+    ros_data = lookup_provider_entry(ros_index, yahoo_player)
+    if ros_data:
+        return ros_data
+    if weekly_data:
+        ros_data = lookup_provider_entry_by_id(ros_by_id, weekly_data)
+        if ros_data:
+            return ros_data
+        ros_data = lookup_provider_entry(
+            ros_index, provider_as_yahoo_player(weekly_data)
+        )
+        if ros_data:
+            return ros_data
+    return lookup_ros_by_compact_name_team(ros_by_id, weekly_data or yahoo_player)
 
 
 def map_players(

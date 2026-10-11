@@ -8,7 +8,8 @@ from .identity import (
     index_provider_item,
     index_provider_item_by_id,
     lookup_provider_entry,
-    lookup_provider_entry_by_id,
+    lookup_ros_entry,
+    provider_player_id,
 )
 from .value import score_projected_stats
 
@@ -101,9 +102,7 @@ def normalize_snapshot(
     all_players = list(all_players_by_key.values())
     for player in all_players:
         weekly_data = lookup_provider_entry(weekly, player)
-        ros_data = lookup_provider_entry(ros, player)
-        if not _has_ros_ranking(ros_data) and weekly_data:
-            ros_data = lookup_provider_entry_by_id(ros_by_id, weekly_data) or ros_data
+        ros_data = lookup_ros_entry(ros, ros_by_id, player, weekly_data)
         playoff_data = [
             lookup_provider_entry(week, player) for week in playoff_projections
         ]
@@ -145,12 +144,8 @@ def normalize_snapshot(
         projections.append(
             {
                 "player_key": player["player_key"],
-                "fantasypros_id": str(
-                    weekly_data.get("fpid")
-                    or ros_data.get("fpid")
-                    or ros_data.get("player_id")
-                    or ""
-                ),
+                "fantasypros_id": provider_player_id(weekly_data)
+                or provider_player_id(ros_data),
                 "name": player["name"],
                 "position": player["position"],
                 "nfl_team": player.get("nfl_team", ""),

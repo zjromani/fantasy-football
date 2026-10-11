@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from app.identity import (
     compact_name,
     index_provider_item,
+    index_provider_item_by_id,
     lookup_provider_entry,
+    lookup_ros_entry,
     map_players,
     normalize_name,
 )
@@ -115,6 +118,34 @@ def test_normalize_uses_weekly_fpid_to_match_ros_rankings() -> None:
     )
 
     assert state["projection_errors"] == []
+
+
+def test_lookup_ros_matches_when_weekly_and_ros_player_ids_differ() -> None:
+    ros_index: dict[tuple[str, str], dict[str, Any]] = {}
+    ros_by_id: dict[str, dict[str, Any]] = {}
+    index_provider_item_by_id(
+        ros_by_id,
+        {
+            "player_id": 23133,
+            "player_name": "De Von Achane",
+            "player_team_id": "MIA",
+            "player_position_id": "RB",
+            "rank_ecr": 12,
+        },
+    )
+    yahoo = {"name": "De'Von Achane", "nfl_team": "MIA", "position": "RB"}
+    weekly = {
+        "player_name": "De Von Achane",
+        "team": "MIA",
+        "position": "RB",
+        "fpid": "23136",
+        "stats": {"rush_yd": 72},
+        "_has_stats": True,
+    }
+
+    match = lookup_ros_entry(ros_index, ros_by_id, yahoo, weekly)
+
+    assert match["rank_ecr"] == 12
 
 
 def test_map_players_uses_shared_lookup_rules() -> None:
