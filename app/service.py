@@ -394,7 +394,10 @@ class AutoGM:
             else kind
         )
         if self.store.capability(capability_action) is False:
-            return self._manual_fallback(kind, payload)
+            writes_allowed = self.settings.writes_enabled and category_enabled
+            if not writes_allowed:
+                return self._manual_fallback(kind, payload)
+            # Cached DB may retain a prior Yahoo rejection; retry when writes are on.
         payload_digest = hash_payload(payload)
         if not self.store.claim_execution(payload_digest):
             return "blocked: payload is already executing or executed"
