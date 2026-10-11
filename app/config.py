@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     approval_ingest_token: str | None = None
     github_repository: str = "zjromani/fantasy-football"
 
+    projection_coverage_strict: bool = False
+
     dry_run: bool = True
     writes_enabled: bool = False
     lineup_writes_enabled: bool = False
