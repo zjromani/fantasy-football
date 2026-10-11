@@ -2,6 +2,12 @@ name: Fantasy Auto-GM
 
 # Paused until the Yahoo Fantasy developer app is approved.
 # Re-enable by setting repository variable YAHOO_APP_APPROVED=true.
+#
+# Agent / integration trigger (no workflow_dispatch scope on the token):
+#   gh api repos/zjromani/fantasy-football/dispatches \
+#     -f event_type=auto-gm-run \
+#     -f 'client_payload[job]=all'
+# From another workflow job, GITHUB_TOKEN needs permissions.contents: write.
 on:
   workflow_dispatch:
     inputs:
@@ -9,6 +15,8 @@ on:
         type: choice
         options: [sync, lineup, pre-kickoff, fab, trades, digest, all]
         default: all
+  repository_dispatch:
+    types: [auto-gm-run]
   schedule:
     - cron: "11 13 * * *"
     - cron: "23 15 * * 2"
@@ -67,6 +75,9 @@ jobs:
         run: |
           job="${{ github.event.inputs.job }}"
           if [[ -z "$job" ]]; then
+            job="${{ github.event.client_payload.job }}"
+          fi
+          if [[ -z "$job" ]]; then
             case "${{ github.event.schedule }}" in
               "11 13 * * *"|"7,37 14-21 * * 0") job="lineup" ;;
               "23 15 * * 2") job="fab" ;;
@@ -74,6 +85,7 @@ jobs:
               "41 14 * * 1") job="digest" ;;
             esac
           fi
+          [[ -z "$job" ]] && job="all"
           [[ "$job" == "pre-kickoff" ]] && job="lineup"
           echo "job=$job" >> "$GITHUB_OUTPUT"
       - name: Apply deterministic weekly jitter
