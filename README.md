@@ -19,7 +19,16 @@ cp .env.example .env
 ```
 
 Set `LEAGUE_KEY` and `TEAM_KEY` in the environment or put their values in
-`config/league.yml`. Keep all write controls off during bootstrap:
+`config/league.yml`. For this league, Yahoo's users/teams API returns canonical
+keys `470.l.196780` and `470.l.196780.t.6` (game code `470` for NFL). Some
+URLs or older notes may show an `nfl.l` prefix; prefer the keys Yahoo lists on
+your authorized team. GitHub Actions passes `vars.LEAGUE_KEY` / `vars.TEAM_KEY`
+when set, which override `config/league.yml` — keep repo variables aligned with
+the canonical keys. Updating keys alone does not fix Yahoo `403` responses that
+say the developer app is not authorized; keep `YAHOO_APP_APPROVED` unset until
+Yahoo approves the app (see rollout below).
+
+Keep all write controls off during bootstrap:
 
 ```dotenv
 WRITES_ENABLED=false
@@ -103,8 +112,8 @@ Create these repository variables:
 
 - `YAHOO_APP_APPROVED` (leave unset/`false` until Yahoo approves the developer app; gates Auto-GM and approval execution workflows)
 - `FANTASY_WEEK` (optional override; Auto-GM resolves the current week from Yahoo when unset)
-- `LEAGUE_KEY`
-- `TEAM_KEY`
+- `LEAGUE_KEY` (e.g. `470.l.196780` for league 196780)
+- `TEAM_KEY` (e.g. `470.l.196780.t.6`)
 - `WRITES_ENABLED` (start with `false`)
 - `LINEUP_WRITES_ENABLED` (enable first after two reviewed cycles)
 - `FAB_WRITES_ENABLED` (enable only after separate review)
@@ -135,8 +144,8 @@ export YAHOO_CLIENT_ID=...
 export YAHOO_CLIENT_SECRET=...
 export YAHOO_REFRESH_TOKEN=...
 export FANTASYPROS_API_KEY=...
-export LEAGUE_KEY=...
-export TEAM_KEY=...
+export LEAGUE_KEY=470.l.196780
+export TEAM_KEY=470.l.196780.t.6
 export WORKER_GITHUB_TOKEN=...
 export APPROVAL_BASE_URL=...
 scripts/bootstrap.sh zjromani/fantasy-football 1

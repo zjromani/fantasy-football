@@ -42,7 +42,7 @@ def test_yahoo_current_week_reads_league_metadata(tmp_path: Path) -> None:
         ),
     )
 
-    assert client.current_week("nfl.l.196780") == 6
+    assert client.current_week("470.l.196780") == 6
 
 
 def test_resolve_fantasy_week_prefers_cli_then_env_then_yahoo(
@@ -70,7 +70,7 @@ def test_resolve_fantasy_week_prefers_cli_then_env_then_yahoo(
             cli_week=3,
             env_week=4,
             yahoo=client,
-            league_key="nfl.l.196780",
+            league_key="470.l.196780",
         )
         == 3
     )
@@ -79,7 +79,7 @@ def test_resolve_fantasy_week_prefers_cli_then_env_then_yahoo(
             cli_week=None,
             env_week=4,
             yahoo=client,
-            league_key="nfl.l.196780",
+            league_key="470.l.196780",
         )
         == 4
     )
@@ -88,7 +88,7 @@ def test_resolve_fantasy_week_prefers_cli_then_env_then_yahoo(
             cli_week=None,
             env_week=None,
             yahoo=client,
-            league_key="nfl.l.196780",
+            league_key="470.l.196780",
         )
         == 6
     )
