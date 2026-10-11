@@ -122,6 +122,7 @@ def test_authorization_url_includes_pkce_s256(tmp_path: Path) -> None:
     assert query["code_challenge_method"] == ["S256"]
     assert query["code_challenge"] == [YahooClient.code_challenge_s256(verifier)]
     assert query["state"] == [state]
+    assert query["scope"] == ["fspt-w"]
 
 
 def test_token_exchange_sends_code_verifier(tmp_path: Path) -> None:

@@ -57,12 +57,15 @@ variable. Rotate a credential only if it may be compromised.
 
 1. Set `WRITES_ENABLED=false`.
 2. Check whether the refresh request failed or Yahoo rejected the API operation.
-3. In the Yahoo Developer app, confirm **Redirect URI(s)** includes
-   `http://localhost:8765/callback` (must match `YAHOO_REDIRECT_URI`).
-4. For an invalid refresh token—or if the browser shows Yahoo “Please specify a
-   valid request” on authorize—pull latest, then regenerate credentials:
-   `oauth-url` (writes JSON `{state, code_verifier}` to the state file) and
-   `oauth-exchange` with the callback `code` and `state`.
+3. In the Yahoo Developer app, register exactly
+   `https://localhost:8765/callback` (the default `YAHOO_REDIRECT_URI`). Yahoo
+   requires HTTPS. The browser shows a certificate error because nothing
+   serves TLS on port 8765. Copy `code` and `state` from the address bar
+   anyway, then run `oauth-exchange`.
+4. For an invalid refresh token, Yahoo “Please specify a valid request”, or
+   callback `error=invalid_scope`, pull latest and regenerate credentials.
+   `oauth-url` requests scope `fspt-w` and writes JSON `{state, code_verifier}`
+   to the state file. `oauth-exchange` takes the callback `code` and `state`.
 5. Update only the `YAHOO_REFRESH_TOKEN` GitHub secret.
 6. Verify a league/team read.
 7. Repeat the identical-roster probe before restoring writes.

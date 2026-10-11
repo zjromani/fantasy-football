@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     yahoo_client_id: str | None = None
     yahoo_client_secret: str | None = None
-    yahoo_redirect_uri: str = "http://localhost:8765/callback"
+    yahoo_redirect_uri: str = "https://localhost:8765/callback"
     yahoo_refresh_token: str | None = None
     yahoo_token_path: str = str(Path.home() / ".fantasy-bot" / "tokens.json")
     yahoo_api_base: str = "https://fantasysports.yahooapis.com/fantasy/v2"
