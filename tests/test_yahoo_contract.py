@@ -61,7 +61,7 @@ def test_refresh_rotation_permissions_and_roster_xml(tmp_path: Path) -> None:
     assert write.url.path.endswith("/team/449.l.1.t.1/roster;week=3")
     assert write.headers["authorization"] == "Bearer new-access"
     assert "<week>3</week>" in write.content.decode()
-    assert "<position>QB</position>" in write.content.decode()
+    assert "<selected_position>QB</selected_position>" in write.content.decode()
 
 
 def test_every_http_error_is_raised(tmp_path: Path) -> None:
