@@ -44,6 +44,20 @@ developer app so scheduled and dispatched Yahoo runs do not fire. CI continues
 normally. After Yahoo approves the app, set the variable and resume the write
 rollout below.
 
+A `403` with a message that the Fantasy app is not authorized is an app-approval
+issue, not a wrong league/team key prefix. Do not enable writes or assume keys
+are the root cause until Yahoo approves the developer application.
+
+## Yahoo league and team keys
+
+Yahoo encodes the sport as a numeric game id in league keys (NFL is `470`, so
+`470.l.<league_id>`). The users/teams API returns those canonical keys for owned
+teams. Repository defaults in `config/league.yml` use `470.l.196780` and
+`470.l.196780.t.6`. When GitHub variables `LEAGUE_KEY` and `TEAM_KEY` are set,
+they override the YAML file in Actions — update both places if you change keys.
+Some reads may still succeed with an `nfl.l` prefix in URLs; prefer the keys
+Yahoo returns for your team when configuring vars or local env.
+
 ## Kill switch
 
 Set repository variable `WRITES_ENABLED=false`. This takes effect on the next

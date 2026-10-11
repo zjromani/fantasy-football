@@ -1,7 +1,7 @@
 name: Gamblers Anonymous
 league_id: "196780"
-league_key: "nfl.l.196780"
-team_key: "nfl.l.196780.t.6"
+league_key: "470.l.196780"
+team_key: "470.l.196780.t.6"
 # GM behavior preset: balanced | win_aggressive
 # win_aggressive — higher FAB caps/bids, bolder lineup upside weighting,
 # relaxed trade floors, 2-for-1 consolidation proposals, more trade volume.
