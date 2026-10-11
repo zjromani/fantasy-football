@@ -86,7 +86,7 @@ class YahooClient:
         return text, None
 
     def get_authorization_url(
-        self, state: str, *, code_verifier: str, scope: str = "fspt-rw"
+        self, state: str, *, code_verifier: str, scope: str = "fspt-w"
     ) -> str:
         self._require_credentials(secret=False)
         params = {

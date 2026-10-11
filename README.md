@@ -26,10 +26,14 @@ WRITES_ENABLED=false
 DRY_RUN=true
 ```
 
-Generate a Yahoo authorization URL (PKCE + random state). In the [Yahoo Developer
-app](https://developer.yahoo.com/apps/), **Redirect URI(s)** must include
-`http://localhost:8765/callback` (or whatever `YAHOO_REDIRECT_URI` is set to).
-Re-run `oauth-url` after pulling OAuth fixes so the state file includes PKCE.
+Generate a Yahoo authorization URL (PKCE + random state, scope `fspt-w`).
+Yahoo requires an HTTPS redirect URI. In the [Yahoo Developer
+app](https://developer.yahoo.com/apps/), register exactly
+`https://localhost:8765/callback` (the default `YAHOO_REDIRECT_URI`). Re-run
+`oauth-url` after pulling OAuth fixes so the state file includes PKCE and the
+URL requests `fspt-w`. Open the URL and copy `code` and `state` from the
+address bar. The browser shows a certificate error because nothing serves TLS
+on port 8765; copy the query parameters anyway, then exchange them:
 
 ```bash
 .venv/bin/python -m app.cli oauth-url --state-file ~/.fantasy-bot/oauth-state
