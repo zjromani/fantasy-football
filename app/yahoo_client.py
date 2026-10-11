@@ -374,9 +374,13 @@ class YahooClient:
             headers=headers,
         )
         if method != "GET" and response.status_code in {401, 403, 405}:
-            raise YahooWriteUnavailable(
+            detail = (response.text or "").strip().replace("\n", " ")[:400]
+            message = (
                 f"Yahoo rejected {method} write with HTTP {response.status_code}"
             )
+            if detail:
+                message = f"{message}: {detail}"
+            raise YahooWriteUnavailable(message)
         response.raise_for_status()
         return response
 

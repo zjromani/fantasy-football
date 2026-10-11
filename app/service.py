@@ -62,6 +62,15 @@ class AutoGM:
                                 priority="urgent",
                             )
                         )
+                    if status.startswith("advisory-only:") and decision.kind in {
+                        "lineup",
+                        "ir",
+                    }:
+                        logger.error(
+                            "Lineup write unavailable (%s); continuing cycle",
+                            status,
+                        )
+                        continue
                     raise RuntimeError(status)
         return decision_ids
 
