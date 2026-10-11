@@ -14,6 +14,10 @@ TEAM_ABBR_ALIASES = {
     "WFT": "WAS",
 }
 
+PROVIDER_IDENTITY_KEYS = ("fpid", "player_id", "id")
+PROVIDER_RANK_KEYS = ("rank_ecr", "rank", "consensus_rank", "pos_rank", "tier")
+PROVIDER_PRESERVE_KEYS = PROVIDER_IDENTITY_KEYS + PROVIDER_RANK_KEYS
+
 NFL_TEAM_NICKNAMES = {
     "cardinals": "ARI",
     "falcons": "ATL",
@@ -117,18 +121,30 @@ def normalize_fantasypros_item(item: dict[str, Any]) -> dict[str, Any]:
 
 def is_provider_player_record(item: dict[str, Any]) -> bool:
     merged = normalize_fantasypros_item(item)
+    if any(merged.get(key) not in {None, ""} for key in PROVIDER_IDENTITY_KEYS):
+        return True
+    if any(merged.get(key) not in {None, ""} for key in PROVIDER_RANK_KEYS):
+        return True
     name = merged.get("player_name") or merged.get("name")
     if not isinstance(name, str) or not name.strip():
         return False
-    if any(merged.get(key) not in {None, ""} for key in ("fpid", "player_id", "id")):
-        return True
-    if any(
-        merged.get(key) not in {None, ""}
-        for key in ("rank_ecr", "rank", "consensus_rank")
-    ):
-        return True
     stats = merged.get("stats")
     return isinstance(stats, dict) and bool(stats)
+
+
+def _build_provider_entry(merged: dict[str, Any]) -> dict[str, Any]:
+    stats = merged.get("stats", {})
+    stats_dict = stats if isinstance(stats, dict) else {}
+    entry = {
+        **merged,
+        **stats_dict,
+        "_has_stats": bool(stats_dict),
+    }
+    for key in PROVIDER_PRESERVE_KEYS:
+        value = merged.get(key)
+        if value not in {None, ""}:
+            entry[key] = value
+    return entry
 
 
 def is_team_defense(position: str) -> bool:
@@ -198,91 +214,45 @@ def index_provider_item(
     name = merged.get("player_name") or merged.get("name")
     if not isinstance(name, str):
         return
-    stats = merged.get("stats", {})
-    stats_overlay = (
-        {
-            key: value
-            for key, value in stats.items()
-            if key
-            not in {
-                "fpid",
-                "player_id",
-                "id",
-                "player_name",
-                "name",
-                "team",
-                "player_team_id",
-                "team_id",
-                "position",
-                "player_position_id",
-                "position_id",
-            }
-        }
-        if isinstance(stats, dict)
-        else {}
-    )
-    entry = {
-        **merged,
-        **stats_overlay,
-        "_has_stats": isinstance(stats, dict) and bool(stats),
-    }
+    entry = _build_provider_entry(merged)
     for key in lookup_keys_for_provider_item(merged):
         result[key] = entry
 
 
-def provider_player_id(item: dict[str, Any]) -> str:
+def provider_player_ids(item: dict[str, Any]) -> list[str]:
     merged = normalize_fantasypros_item(item)
-    for key in ("fpid", "player_id", "id"):
+    ids: list[str] = []
+    seen: set[str] = set()
+    for key in PROVIDER_IDENTITY_KEYS:
         value = merged.get(key)
         if value not in {None, ""}:
-            return str(value)
-    return ""
+            player_id = str(value)
+            if player_id not in seen:
+                seen.add(player_id)
+                ids.append(player_id)
+    return ids
+
+
+def provider_player_id(item: dict[str, Any]) -> str:
+    ids = provider_player_ids(item)
+    return ids[0] if ids else ""
 
 
 def index_provider_item_by_id(
     result: dict[str, dict[str, Any]], item: dict[str, Any]
 ) -> None:
-    player_id = provider_player_id(item)
-    if not player_id:
+    player_ids = provider_player_ids(item)
+    if not player_ids:
         return
     merged = normalize_fantasypros_item(item)
     if not (
         is_provider_player_record(item)
-        or any(
-            merged.get(key) not in {None, ""}
-            for key in ("rank_ecr", "rank", "consensus_rank")
-        )
+        or any(merged.get(key) not in {None, ""} for key in PROVIDER_RANK_KEYS)
     ):
         return
-    merged = normalize_fantasypros_item(item)
-    stats = merged.get("stats", {})
-    stats_overlay = (
-        {
-            key: value
-            for key, value in stats.items()
-            if key
-            not in {
-                "fpid",
-                "player_id",
-                "id",
-                "player_name",
-                "name",
-                "team",
-                "player_team_id",
-                "team_id",
-                "position",
-                "player_position_id",
-                "position_id",
-            }
-        }
-        if isinstance(stats, dict)
-        else {}
-    )
-    result[player_id] = {
-        **merged,
-        **stats_overlay,
-        "_has_stats": isinstance(stats, dict) and bool(stats),
-    }
+    entry = _build_provider_entry(merged)
+    for player_id in player_ids:
+        result[player_id] = entry
 
 
 def lookup_provider_entry(
@@ -298,8 +268,7 @@ def lookup_provider_entry(
 def lookup_provider_entry_by_id(
     index: dict[str, dict[str, Any]], provider_data: dict[str, Any]
 ) -> dict[str, Any]:
-    player_id = provider_player_id(provider_data)
-    if player_id:
+    for player_id in provider_player_ids(provider_data):
         match = index.get(player_id)
         if match:
             return match

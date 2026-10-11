@@ -9,9 +9,11 @@ from app.identity import (
     index_provider_item,
     index_provider_item_by_id,
     lookup_provider_entry,
+    lookup_provider_entry_by_id,
     lookup_ros_entry,
     map_players,
     normalize_name,
+    provider_player_id,
 )
 from app.normalize import normalize_snapshot, validate_projection_coverage
 
@@ -146,6 +148,114 @@ def test_lookup_ros_matches_when_weekly_and_ros_player_ids_differ() -> None:
     match = lookup_ros_entry(ros_index, ros_by_id, yahoo, weekly)
 
     assert match["rank_ecr"] == 12
+
+
+def test_provider_player_id_survives_empty_fpid_in_stats() -> None:
+    weekly_index: dict[tuple[str, str], dict] = {}
+    index_provider_item(
+        weekly_index,
+        {
+            "fpid": 23136,
+            "name": "De Von Achane",
+            "team_id": "MIA",
+            "position_id": "RB",
+            "stats": {"points_half": 18.17, "fpid": ""},
+        },
+    )
+    yahoo = {"name": "De'Von Achane", "nfl_team": "MIA", "position": "RB"}
+    weekly = lookup_provider_entry(weekly_index, yahoo)
+
+    assert provider_player_id(weekly) == "23136"
+
+
+def test_normalize_matches_live_projections_to_id_only_ros_rows() -> None:
+    snapshot = {
+        "source_updated_at": "2026-10-11T04:23:35+00:00",
+        "week": 1,
+        "yahoo": FIXTURE["yahoo"],
+        "fantasypros": {
+            "weekly": {
+                "data": {
+                    "players": [
+                        {
+                            "fpid": 23136,
+                            "name": "De Von Achane",
+                            "team_id": "MIA",
+                            "position_id": "RB",
+                            "stats": {"points_half": 18.17, "fpid": ""},
+                        },
+                        {
+                            "fpid": 8090,
+                            "name": "Green Bay Packers",
+                            "team_id": "GB",
+                            "position_id": "DST",
+                            "stats": {"points": 7.64},
+                        },
+                        {
+                            "fpid": 23890,
+                            "name": "Marcus Jones",
+                            "team_id": "NE",
+                            "position_id": "CB",
+                            "stats": {"def_tackle": 3.4, "player_id": ""},
+                        },
+                    ]
+                },
+                "fetched_at": "2026-10-11T04:23:35+00:00",
+            },
+            "ros": {
+                "data": {
+                    "players": [
+                        {
+                            "player_id": 23136,
+                            "player_team_id": "MIA",
+                            "player_position_id": "RB",
+                            "rank_ecr": 12,
+                        },
+                        {
+                            "player_id": 8090,
+                            "player_team_id": "GB",
+                            "player_position_id": "DST",
+                            "rank_ecr": 9,
+                        },
+                        {
+                            "player_id": 23890,
+                            "player_team_id": "NE",
+                            "player_position_id": "CB",
+                            "rank_ecr": 142,
+                        },
+                    ]
+                },
+                "fetched_at": "2026-10-11T04:23:35+00:00",
+            },
+            "playoffs": {},
+        },
+    }
+
+    state = normalize_snapshot(
+        snapshot,
+        league_key="461.l.196780",
+        team_key="461.p.196780.t.1",
+    )
+
+    assert state["projection_errors"] == []
+
+
+def test_lookup_provider_entry_by_id_tries_all_provider_ids() -> None:
+    ros_by_id: dict[str, dict] = {}
+    index_provider_item_by_id(
+        ros_by_id,
+        {
+            "player_id": 23890,
+            "player_team_id": "NE",
+            "player_position_id": "CB",
+            "rank_ecr": 142,
+        },
+    )
+    weekly = {"fpid": 23890, "player_id": 23891, "name": "Marcus Jones"}
+
+    match = lookup_provider_entry_by_id(ros_by_id, weekly)
+
+    assert match["rank_ecr"] == 142
 
 
 def test_map_players_uses_shared_lookup_rules() -> None:

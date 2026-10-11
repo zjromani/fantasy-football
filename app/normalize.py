@@ -481,7 +481,16 @@ def _has_weekly_projection(data: dict[str, Any]) -> bool:
 def _has_ros_ranking(data: dict[str, Any]) -> bool:
     if not data:
         return False
-    for key in ("rank", "rank_ecr", "consensus_rank", "fpid", "player_id", "id"):
+    for key in (
+        "rank",
+        "rank_ecr",
+        "consensus_rank",
+        "pos_rank",
+        "tier",
+        "fpid",
+        "player_id",
+        "id",
+    ):
         if data.get(key) not in {None, ""}:
             return True
     return _has_weekly_projection(data)
