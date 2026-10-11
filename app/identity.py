@@ -77,6 +77,26 @@ def compact_name(name: str) -> str:
     return normalize_name(name).replace(" ", "")
 
 
+def name_lookup_keys(name: str) -> list[str]:
+    normalized = normalize_name(name)
+    keys: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        if value and value not in seen:
+            seen.add(value)
+            keys.append(value)
+
+    add(normalized)
+    add(normalized.replace(" ", ""))
+    parts = normalized.split()
+    if len(parts) >= 2:
+        first_last = f"{parts[0]} {parts[-1]}"
+        add(first_last)
+        add(first_last.replace(" ", ""))
+    return keys
+
+
 def normalize_team(team: str) -> str:
     value = str(team or "").upper().strip()
     return TEAM_ABBR_ALIASES.get(value, value)
@@ -118,7 +138,21 @@ def normalize_fantasypros_item(item: dict[str, Any]) -> dict[str, Any]:
         merged["position"] = merged["position_id"]
     if not merged.get("player_name") and merged.get("name"):
         merged["player_name"] = merged["name"]
+    stats = merged.get("stats")
+    if isinstance(stats, dict):
+        for key in PROVIDER_IDENTITY_KEYS:
+            if merged.get(key) in {None, ""} and stats.get(key) not in {None, ""}:
+                merged[key] = stats[key]
     return merged
+
+
+def _meaningful_stats(stats: dict[str, Any]) -> bool:
+    for key, value in stats.items():
+        if key in PROVIDER_IDENTITY_KEYS and value in {None, ""}:
+            continue
+        if value not in {None, ""}:
+            return True
+    return False
 
 
 def is_provider_player_record(item: dict[str, Any]) -> bool:
@@ -128,10 +162,13 @@ def is_provider_player_record(item: dict[str, Any]) -> bool:
     if any(merged.get(key) not in {None, ""} for key in PROVIDER_RANK_KEYS):
         return True
     name = merged.get("player_name") or merged.get("name")
-    if not isinstance(name, str) or not name.strip():
-        return False
+    if isinstance(name, str) and name.strip():
+        stats = merged.get("stats")
+        return isinstance(stats, dict) and _meaningful_stats(stats)
     stats = merged.get("stats")
-    return isinstance(stats, dict) and bool(stats)
+    if isinstance(stats, dict) and _meaningful_stats(stats):
+        return True
+    return False
 
 
 def _build_provider_entry(merged: dict[str, Any]) -> dict[str, Any]:
@@ -140,7 +177,7 @@ def _build_provider_entry(merged: dict[str, Any]) -> dict[str, Any]:
     entry = {
         **merged,
         **stats_dict,
-        "_has_stats": bool(stats_dict),
+        "_has_stats": _meaningful_stats(stats_dict),
     }
     for key in PROVIDER_PRESERVE_KEYS:
         value = merged.get(key)
@@ -170,10 +207,8 @@ def lookup_keys_for_yahoo_player(player: dict[str, Any]) -> list[tuple[str, str]
             seen.add(key)
             keys.append(key)
 
-    add(normalize_name(name), team)
-    compact = compact_name(name)
-    if compact:
-        add(compact, team)
+    for name_key in name_lookup_keys(name):
+        add(name_key, team)
     if is_team_defense(position):
         add(DEFENSE_LOOKUP_NAME, team)
     return keys
@@ -198,13 +233,117 @@ def lookup_keys_for_provider_item(item: dict[str, Any]) -> list[tuple[str, str]]
             seen.add(key)
             keys.append(key)
 
-    add(normalize_name(name), team)
-    compact = compact_name(name)
-    if compact:
-        add(compact, team)
+    for name_key in name_lookup_keys(name):
+        add(name_key, team)
     if position == "DST" or is_team_defense(position):
         add(DEFENSE_LOOKUP_NAME, team)
     return keys
+
+
+def merge_normalized_provider_items(
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    by_id: dict[str, dict[str, Any]] = {}
+    id_order: list[str] = []
+    by_name: dict[tuple[str, str], dict[str, Any]] = {}
+    name_order: list[tuple[str, str]] = []
+    orphans: list[dict[str, Any]] = []
+
+    def normalized_ids(merged: dict[str, Any]) -> list[str]:
+        ids: list[str] = []
+        seen: set[str] = set()
+        for key in PROVIDER_IDENTITY_KEYS:
+            value = merged.get(key)
+            if value not in {None, ""}:
+                player_id = str(value)
+                if player_id not in seen:
+                    seen.add(player_id)
+                    ids.append(player_id)
+        return ids
+
+    def name_team_key(merged: dict[str, Any]) -> tuple[str, str] | None:
+        name = merged.get("player_name") or merged.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return None
+        team = normalize_team(
+            str(
+                merged.get("team")
+                or merged.get("team_id")
+                or merged.get("player_team_id")
+                or ""
+            )
+        )
+        if not team:
+            team = infer_team_from_name(name)
+        if not team:
+            return None
+        return (compact_name(name), team)
+
+    def absorb(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+        stats_a = (
+            existing.get("stats") if isinstance(existing.get("stats"), dict) else {}
+        )
+        stats_b = (
+            incoming.get("stats") if isinstance(incoming.get("stats"), dict) else {}
+        )
+        combined = {**existing, **incoming}
+        if stats_a or stats_b:
+            combined["stats"] = {**stats_a, **stats_b}
+        for key in PROVIDER_PRESERVE_KEYS:
+            for source in (existing, incoming):
+                value = source.get(key)
+                if value not in {None, ""}:
+                    combined[key] = value
+                    break
+        for name_key in ("player_name", "name"):
+            for source in (existing, incoming):
+                value = source.get(name_key)
+                if isinstance(value, str) and value.strip():
+                    combined[name_key] = value
+                    break
+        return normalize_fantasypros_item(combined)
+
+    for item in items:
+        ids = normalized_ids(item)
+        if ids:
+            primary = ids[0]
+            if primary in by_id:
+                by_id[primary] = absorb(by_id[primary], item)
+            else:
+                by_id[primary] = dict(item)
+                id_order.append(primary)
+            continue
+        name_key = name_team_key(item)
+        if name_key:
+            if name_key in by_name:
+                by_name[name_key] = absorb(by_name[name_key], item)
+            else:
+                by_name[name_key] = dict(item)
+                name_order.append(name_key)
+            continue
+        orphans.append(item)
+
+    merged: list[dict[str, Any]] = [by_id[player_id] for player_id in id_order]
+    merged.extend(by_name[key] for key in name_order)
+    merged.extend(orphans)
+    return merged
+
+
+def index_provider_entry(
+    result: dict[tuple[str, str], dict[str, Any]], entry: dict[str, Any]
+) -> None:
+    name = entry.get("player_name") or entry.get("name")
+    if not isinstance(name, str):
+        return
+    for key in lookup_keys_for_provider_item(entry):
+        result[key] = entry
+
+
+def index_provider_entry_by_id(
+    result: dict[str, dict[str, Any]], entry: dict[str, Any]
+) -> None:
+    for player_id in provider_player_ids(entry):
+        result[player_id] = entry
 
 
 def index_provider_item(
@@ -216,9 +355,7 @@ def index_provider_item(
     name = merged.get("player_name") or merged.get("name")
     if not isinstance(name, str):
         return
-    entry = _build_provider_entry(merged)
-    for key in lookup_keys_for_provider_item(merged):
-        result[key] = entry
+    index_provider_entry(result, _build_provider_entry(merged))
 
 
 def provider_player_ids(item: dict[str, Any]) -> list[str]:
@@ -252,9 +389,7 @@ def index_provider_item_by_id(
         or any(merged.get(key) not in {None, ""} for key in PROVIDER_RANK_KEYS)
     ):
         return
-    entry = _build_provider_entry(merged)
-    for player_id in player_ids:
-        result[player_id] = entry
+    index_provider_entry_by_id(result, _build_provider_entry(merged))
 
 
 def lookup_provider_entry(
@@ -299,6 +434,8 @@ def provider_as_yahoo_player(provider_data: dict[str, Any]) -> dict[str, Any]:
 def lookup_by_compact_name_team(
     entries: Any, player: dict[str, Any]
 ) -> dict[str, Any]:
+    if not entries:
+        return {}
     if "player_name" in player or "fpid" in player or "player_id" in player:
         proxy = provider_as_yahoo_player(player)
     else:
@@ -307,7 +444,7 @@ def lookup_by_compact_name_team(
     team = normalize_team(str(proxy.get("nfl_team") or ""))
     if not name or not team:
         return {}
-    target = compact_name(name)
+    targets = set(name_lookup_keys(name))
     if isinstance(entries, dict):
         iterable = entries.values()
     else:
@@ -319,7 +456,10 @@ def lookup_by_compact_name_team(
         entry_team = normalize_team(
             str(entry.get("team") or entry.get("player_team_id") or "")
         )
-        if entry_team == team and compact_name(entry_name) == target:
+        if entry_team != team:
+            continue
+        entry_keys = set(name_lookup_keys(entry_name))
+        if targets & entry_keys:
             return entry
     return {}
 
@@ -330,22 +470,73 @@ def lookup_ros_by_compact_name_team(
     return lookup_by_compact_name_team(ros_by_id, player)
 
 
+def _provider_ids_for_yahoo_player(
+    weekly_by_id: dict[str, dict[str, Any]], yahoo_player: dict[str, Any]
+) -> list[str]:
+    match = lookup_by_compact_name_team(weekly_by_id, yahoo_player)
+    ids: list[str] = []
+    seen: set[str] = set()
+    for source in (match,):
+        if not source:
+            continue
+        for key in PROVIDER_IDENTITY_KEYS:
+            value = source.get(key)
+            if value not in {None, ""}:
+                player_id = str(value)
+                if player_id not in seen:
+                    seen.add(player_id)
+                    ids.append(player_id)
+    return ids
+
+
 def lookup_weekly_entry(
     weekly_index: dict[tuple[str, str], dict[str, Any]],
     weekly_by_id: dict[str, dict[str, Any]],
     yahoo_player: dict[str, Any],
     ros_data: dict[str, Any],
 ) -> dict[str, Any]:
-    weekly_data = lookup_provider_entry(weekly_index, yahoo_player)
-    if weekly_data:
-        return weekly_data
-    weekly_data = lookup_provider_entry_by_id(weekly_by_id, ros_data)
-    if weekly_data:
-        return weekly_data
-    weekly_data = lookup_by_compact_name_team(weekly_index, yahoo_player)
-    if weekly_data:
-        return weekly_data
-    return lookup_by_compact_name_team(weekly_by_id, yahoo_player)
+    candidates: list[dict[str, Any]] = []
+
+    def add(candidate: dict[str, Any]) -> None:
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    add(lookup_provider_entry(weekly_index, yahoo_player))
+    add(lookup_provider_entry_by_id(weekly_by_id, ros_data))
+    add(lookup_by_compact_name_team(weekly_index, yahoo_player))
+    add(lookup_by_compact_name_team(weekly_by_id, yahoo_player))
+    for player_id in _provider_ids_for_yahoo_player(weekly_by_id, yahoo_player):
+        add(weekly_by_id.get(player_id, {}))
+    for candidate in list(candidates):
+        add(lookup_provider_entry_by_id(weekly_by_id, candidate))
+
+    if not candidates:
+        return {}
+
+    def weekly_score(data: dict[str, Any]) -> int:
+        score = 2 if data.get("_has_stats") else 0
+        for key in (
+            "fpts",
+            "fantasy_points",
+            "points",
+            "points_half",
+            "points_std",
+            "points_ppr",
+            "projected_points",
+            "pass_att",
+            "pass_yd",
+            "rush_yd",
+            "rec_yd",
+            "def_pa",
+            "def_sack",
+            "def_tackle",
+            "def_pd",
+        ):
+            if data.get(key) not in {None, ""}:
+                score += 1
+        return score
+
+    return max(candidates, key=weekly_score)
 
 
 def lookup_ros_entry(
@@ -353,6 +544,8 @@ def lookup_ros_entry(
     ros_by_id: dict[str, dict[str, Any]],
     yahoo_player: dict[str, Any],
     weekly_data: dict[str, Any],
+    *,
+    weekly_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     ros_data = lookup_provider_entry(ros_index, yahoo_player)
     if ros_data:
@@ -366,6 +559,16 @@ def lookup_ros_entry(
         )
         if ros_data:
             return ros_data
+    if weekly_by_id:
+        for player_id in _provider_ids_for_yahoo_player(weekly_by_id, yahoo_player):
+            match = ros_by_id.get(player_id)
+            if match:
+                return match
+    if weekly_data:
+        for player_id in provider_player_ids(weekly_data):
+            match = ros_by_id.get(player_id)
+            if match:
+                return match
     match = lookup_ros_by_compact_name_team(ros_by_id, weekly_data or yahoo_player)
     if match:
         return match
