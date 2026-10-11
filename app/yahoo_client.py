@@ -64,7 +64,30 @@ class YahooClient:
     def new_oauth_state() -> str:
         return secrets.token_urlsafe(32)
 
-    def get_authorization_url(self, state: str, scope: str = "fspt-rw") -> str:
+    @staticmethod
+    def new_code_verifier() -> str:
+        return secrets.token_urlsafe(64)
+
+    @staticmethod
+    def code_challenge_s256(code_verifier: str) -> str:
+        digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+        return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+    @staticmethod
+    def format_oauth_state_file(state: str, code_verifier: str) -> str:
+        return json.dumps({"state": state, "code_verifier": code_verifier})
+
+    @staticmethod
+    def parse_oauth_state_file(raw: str) -> tuple[str, str | None]:
+        text = raw.strip()
+        if text.startswith("{"):
+            payload = json.loads(text)
+            return str(payload["state"]), payload.get("code_verifier")
+        return text, None
+
+    def get_authorization_url(
+        self, state: str, *, code_verifier: str, scope: str = "fspt-rw"
+    ) -> str:
         self._require_credentials(secret=False)
         params = {
             "client_id": self.settings.yahoo_client_id,
@@ -72,6 +95,8 @@ class YahooClient:
             "response_type": "code",
             "state": state,
             "scope": scope,
+            "code_challenge": self.code_challenge_s256(code_verifier),
+            "code_challenge_method": "S256",
         }
         return str(
             httpx.URL(f"{self.auth_base_url}/oauth2/request_auth").copy_with(
@@ -85,16 +110,22 @@ class YahooClient:
             raise ValueError("Yahoo OAuth state mismatch")
 
     def exchange_code_for_tokens(
-        self, code: str, *, expected_state: str, received_state: str
+        self,
+        code: str,
+        *,
+        expected_state: str,
+        received_state: str,
+        code_verifier: str | None = None,
     ) -> OAuthTokens:
         self.validate_oauth_state(expected_state, received_state)
-        return self._token_request(
-            {
-                "grant_type": "authorization_code",
-                "redirect_uri": self.settings.yahoo_redirect_uri,
-                "code": code,
-            }
-        )
+        payload: dict[str, str | None] = {
+            "grant_type": "authorization_code",
+            "redirect_uri": self.settings.yahoo_redirect_uri,
+            "code": code,
+        }
+        if code_verifier:
+            payload["code_verifier"] = code_verifier
+        return self._token_request(payload)
 
     def refresh_access_token(self) -> OAuthTokens:
         if not self._tokens or not self._tokens.refresh_token:

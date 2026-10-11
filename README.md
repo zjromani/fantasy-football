@@ -26,7 +26,10 @@ WRITES_ENABLED=false
 DRY_RUN=true
 ```
 
-Generate a Yahoo authorization URL with a random state:
+Generate a Yahoo authorization URL (PKCE + random state). In the [Yahoo Developer
+app](https://developer.yahoo.com/apps/), **Redirect URI(s)** must include
+`http://localhost:8765/callback` (or whatever `YAHOO_REDIRECT_URI` is set to).
+Re-run `oauth-url` after pulling OAuth fixes so the state file includes PKCE.
 
 ```bash
 .venv/bin/python -m app.cli oauth-url --state-file ~/.fantasy-bot/oauth-state

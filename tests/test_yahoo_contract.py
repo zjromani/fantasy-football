@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import stat
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -110,6 +111,55 @@ def test_oauth_state_must_match(tmp_path: Path) -> None:
         client.exchange_code_for_tokens(
             "code", expected_state="expected", received_state="attacker"
         )
+
+
+def test_authorization_url_includes_pkce_s256(tmp_path: Path) -> None:
+    client = YahooClient(settings=settings(tmp_path))
+    state = YahooClient.new_oauth_state()
+    verifier = YahooClient.new_code_verifier()
+    url = client.get_authorization_url(state, code_verifier=verifier)
+    query = parse_qs(urlparse(url).query)
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["code_challenge"] == [YahooClient.code_challenge_s256(verifier)]
+    assert query["state"] == [state]
+
+
+def test_token_exchange_sends_code_verifier(tmp_path: Path) -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/get_token"):
+            form = parse_qs(request.content.decode())
+            captured.update({key: values[0] for key, values in form.items()})
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "access",
+                    "refresh_token": "refresh",
+                    "expires_in": 3600,
+                },
+            )
+        return httpx.Response(200, json={})
+
+    client = YahooClient(
+        settings=settings(tmp_path), transport=httpx.MockTransport(handler)
+    )
+    verifier = YahooClient.new_code_verifier()
+    client.exchange_code_for_tokens(
+        "auth-code",
+        expected_state="state-1",
+        received_state="state-1",
+        code_verifier=verifier,
+    )
+    assert captured["code_verifier"] == verifier
+    assert captured["grant_type"] == "authorization_code"
+    assert captured["code"] == "auth-code"
+
+
+def test_parse_oauth_state_file_backward_compat() -> None:
+    assert YahooClient.parse_oauth_state_file("plain-state") == ("plain-state", None)
+    payload = YahooClient.format_oauth_state_file("s", "v")
+    assert YahooClient.parse_oauth_state_file(payload) == ("s", "v")
 
 
 def test_available_players_are_paginated(tmp_path: Path) -> None:
