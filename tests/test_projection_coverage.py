@@ -81,9 +81,18 @@ def test_validate_projection_coverage_reports_missing_entries() -> None:
     errors = validate_projection_coverage(player, {}, {})
 
     assert errors == [
-        "missing weekly projection for Mystery Player",
         "missing ROS ranking for Mystery Player",
+        "missing weekly projection for Mystery Player",
     ]
+
+
+def test_validate_projection_coverage_allows_weekly_missing_when_ros_present() -> None:
+    player = {"name": "Jonah Coleman", "nfl_team": "DEN", "position": "RB"}
+    ros = {"rank_ecr": 120, "player_id": 27320}
+
+    errors = validate_projection_coverage(player, {}, ros)
+
+    assert errors == []
 
 
 def test_validate_projection_coverage_skips_weekly_when_player_on_bye() -> None:
@@ -96,7 +105,7 @@ def test_validate_projection_coverage_skips_weekly_when_player_on_bye() -> None:
 
     errors = validate_projection_coverage(player, {}, {}, game_week=6)
 
-    assert errors == ["missing ROS ranking for De'Von Achane"]
+    assert errors == []
 
 
 def test_lookup_indexes_nested_consensus_ranking_player_payload() -> None:
