@@ -12,6 +12,7 @@ from pathlib import Path
 from .approvals import ApprovalService
 from .audit import AuditStore, hash_payload
 from .config import Settings
+from .fantasy_week import resolve_fantasy_week
 from .league import LeagueConfig
 from .normalize import extract_yahoo_settings, normalize_snapshot
 from .notifications import Notification, NtfyClient
@@ -38,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     exchange.add_argument("--state-file", required=True)
 
     sync = commands.add_parser("sync")
-    sync.add_argument("--week", type=int, required=True)
+    sync.add_argument("--week", type=int, default=None)
     sync.add_argument("--output", default="artifacts/raw-state.json")
 
     recommend = commands.add_parser("recommend")
@@ -48,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_all.add_argument("--state", required=True)
 
     run_live = commands.add_parser("run-live")
-    run_live.add_argument("--week", type=int, required=True)
+    run_live.add_argument("--week", type=int, default=None)
     run_live.add_argument("--raw-output", default="artifacts/raw-state.json")
     run_live.add_argument(
         "--only", choices=["all", "lineup", "fab", "trades"], default="all"
@@ -71,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--signature", required=True)
 
     probe = commands.add_parser("probe-write")
-    probe.add_argument("--week", type=int, required=True)
+    probe.add_argument("--week", type=int, default=None)
     probe.add_argument("--positions", required=True)
 
     commands.add_parser("poll-transactions")
@@ -132,15 +133,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "sync":
         yahoo = YahooClient(settings=settings)
+        if not league.league_key:
+            raise RuntimeError("league_key is required in league config or environment")
+        week = resolve_fantasy_week(
+            cli_week=args.week,
+            env_week=settings.fantasy_week,
+            yahoo=yahoo,
+            league_key=league.league_key,
+        )
         provider = FantasyProsClient(settings=settings, audit=store)
         path = sync_raw_state(
             yahoo=yahoo,
             fantasypros=provider,
             league=league,
-            week=args.week,
+            week=week,
             output=args.output,
         )
-        return emit({"status": "synced", "output": str(path)})
+        return emit({"status": "synced", "output": str(path), "week": week})
 
     gm = AutoGM(
         settings=settings,
@@ -168,11 +177,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "run-live":
         if not league.league_key or not league.team_key:
             raise RuntimeError("league_key and team_key are required in league config")
+        week = resolve_fantasy_week(
+            cli_week=args.week,
+            env_week=settings.fantasy_week,
+            yahoo=gm.yahoo,
+            league_key=league.league_key,
+        )
         raw_path = sync_raw_state(
             yahoo=gm.yahoo,
             fantasypros=FantasyProsClient(settings=settings, audit=store),
             league=league,
-            week=args.week,
+            week=week,
             output=args.raw_output,
             include_playoffs=args.only in {"all", "trades"},
         )
@@ -195,6 +210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return emit(
             {
                 "status": "ok",
+                "week": week,
                 "decision_ids": decision_ids,
                 "gm_profile": league.profile,
                 "groupme": groupme,
@@ -244,11 +260,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         return emit({"status": status, "decision_id": decision_id})
 
     if args.command == "probe-write":
-        if not league.team_key:
-            raise RuntimeError("team_key is required in league config")
+        if not league.team_key or not league.league_key:
+            raise RuntimeError(
+                "league_key and team_key are required in league config or environment"
+            )
+        week = resolve_fantasy_week(
+            cli_week=args.week,
+            env_week=settings.fantasy_week,
+            yahoo=gm.yahoo,
+            league_key=league.league_key,
+        )
         capability = gm.yahoo.probe_identical_roster(
             league.team_key,
-            args.week,
+            week,
             json.loads(Path(args.positions).read_text()),
         )
         store.save_capability(

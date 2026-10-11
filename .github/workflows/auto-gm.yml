@@ -33,6 +33,7 @@ jobs:
       LEAGUE_CONFIG_PATH: config/league.yml
       LEAGUE_KEY: ${{ vars.LEAGUE_KEY }}
       TEAM_KEY: ${{ vars.TEAM_KEY }}
+      FANTASY_WEEK: ${{ vars.FANTASY_WEEK }}
       YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
       YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
       YAHOO_REFRESH_TOKEN: ${{ secrets.YAHOO_REFRESH_TOKEN }}
@@ -83,12 +84,11 @@ jobs:
         if: steps.route.outputs.job != 'digest' && steps.route.outputs.job != 'sync'
         run: |
           python -m app.cli run-live \
-            --week "${{ vars.FANTASY_WEEK }}" \
             --only "${{ steps.route.outputs.job }}" \
             --raw-output /tmp/raw-state.json
       - name: Sync state only
         if: steps.route.outputs.job == 'sync'
-        run: python -m app.cli sync --week "${{ vars.FANTASY_WEEK }}" --output /tmp/raw-state.json
+        run: python -m app.cli sync --output /tmp/raw-state.json
       - name: Send weekly digest
         if: steps.route.outputs.job == 'digest'
         run: python -m app.cli digest

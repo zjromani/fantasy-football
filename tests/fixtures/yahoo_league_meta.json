@@ -1,0 +1,16 @@
+{
+  "fantasy_content": {
+    "league": [
+      [
+        {
+          "league_key": "nfl.l.196780",
+          "league_id": "196780",
+          "name": "Gamblers Anonymous",
+          "current_week": "6",
+          "start_week": "1",
+          "end_week": "17"
+        }
+      ]
+    ]
+  }
+}

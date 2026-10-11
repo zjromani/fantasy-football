@@ -95,7 +95,7 @@ Create these GitHub Actions secrets:
 Create these repository variables:
 
 - `YAHOO_APP_APPROVED` (leave unset/`false` until Yahoo approves the developer app; gates Auto-GM and approval execution workflows)
-- `FANTASY_WEEK`
+- `FANTASY_WEEK` (optional override; Auto-GM resolves the current week from Yahoo when unset)
 - `LEAGUE_KEY`
 - `TEAM_KEY`
 - `WRITES_ENABLED` (start with `false`)

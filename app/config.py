@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +27,18 @@ class Settings(BaseSettings):
 
     league_key: str | None = None
     team_key: str | None = None
+    fantasy_week: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("FANTASY_WEEK"),
+    )
+
+    @field_validator("fantasy_week", mode="before")
+    @classmethod
+    def _coerce_empty_fantasy_week(cls, value: object) -> object | None:
+        if value is None or value == "":
+            return None
+        return value
+
     league_config_path: str = "config/league.yml"
     db_path: str = "auto-gm.sqlite"
     cache_dir: str = ".cache"
