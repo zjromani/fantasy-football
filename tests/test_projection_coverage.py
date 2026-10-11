@@ -27,6 +27,23 @@ def test_compact_name_matches_apostrophe_and_spaced_variants() -> None:
     assert compact_name("De'Von Achane") == compact_name("De Von Achane")
 
 
+def test_first_last_name_key_matches_middle_initial_provider_name() -> None:
+    yahoo = {"name": "Jonah Coleman", "nfl_team": "ARI", "position": "RB"}
+    weekly = {
+        ("jonah coleman", "ARI"): {
+            "player_name": "Jonah T Coleman",
+            "team": "ARI",
+            "position": "RB",
+            "stats": {"rush_yd": 42},
+            "_has_stats": True,
+        }
+    }
+
+    match = lookup_provider_entry(weekly, yahoo)
+
+    assert match["stats"]["rush_yd"] == 42
+
+
 def test_lookup_matches_team_defense_by_nickname_and_team() -> None:
     weekly = {
         ("", "GB"): {
@@ -179,6 +196,240 @@ def test_provider_player_id_survives_empty_fpid_in_stats() -> None:
     weekly = lookup_provider_entry(weekly_index, yahoo)
 
     assert provider_player_id(weekly) == "23136"
+
+
+def test_normalize_merges_split_weekly_rows_by_fpid() -> None:
+    snapshot = {
+        "source_updated_at": "2026-10-11T04:23:35+00:00",
+        "week": 6,
+        "yahoo": {
+            "roster": {
+                "team": [
+                    {
+                        "team_key": "461.p.196780.t.1",
+                        "name": "Test Team",
+                        "roster": {
+                            "0": {
+                                "players": {
+                                    "0": {
+                                        "player": [
+                                            {"player_key": "461.p.99901"},
+                                            {"name": {"full": "De'Von Achane"}},
+                                            {"editorial_team_abbr": "MIA"},
+                                            {"display_position": "RB"},
+                                            {
+                                                "eligible_positions": [
+                                                    {"position": "RB"}
+                                                ]
+                                            },
+                                            {
+                                                "selected_position": [
+                                                    {"position": "RB"}
+                                                ]
+                                            },
+                                        ]
+                                    }
+                                }
+                            }
+                        },
+                    }
+                ]
+            },
+            "available_players": {},
+            "teams": {},
+            "transactions": {},
+        },
+        "fantasypros": {
+            "weekly": {
+                "data": {
+                    "players": [
+                        {
+                            "fpid": 23136,
+                            "name": "De Von Achane",
+                            "team_id": "MIA",
+                            "position_id": "RB",
+                            "stats": {},
+                        },
+                        {
+                            "stats": {
+                                "points_half": 18.17,
+                                "fpid": "",
+                                "player_id": 23136,
+                            }
+                        },
+                    ]
+                },
+                "fetched_at": "2026-10-11T04:23:35+00:00",
+            },
+            "ros": {
+                "data": {
+                    "players": [
+                        {
+                            "player_id": 23136,
+                            "player_team_id": "MIA",
+                            "player_position_id": "RB",
+                            "rank_ecr": 12,
+                        }
+                    ]
+                },
+                "fetched_at": "2026-10-11T04:23:35+00:00",
+            },
+            "playoffs": {},
+        },
+    }
+
+    state = normalize_snapshot(
+        snapshot,
+        league_key="461.l.196780",
+        team_key="461.p.196780.t.1",
+    )
+
+    assert state["projection_errors"] == []
+
+
+def test_normalize_matches_live_roster_with_coleman_and_split_weekly_rows() -> None:
+    snapshot = {
+        "source_updated_at": "2026-10-11T04:23:35+00:00",
+        "week": 6,
+        "yahoo": {
+            "roster": {
+                "team": [
+                    {
+                        "team_key": "461.p.196780.t.1",
+                        "name": "Test Team",
+                        "roster": {
+                            "0": {
+                                "players": {
+                                    "0": {
+                                        "player": [
+                                            {"player_key": "461.p.33537"},
+                                            {"name": {"full": "De'Von Achane"}},
+                                            {"editorial_team_abbr": "MIA"},
+                                            {"display_position": "RB"},
+                                            {
+                                                "eligible_positions": [
+                                                    {"position": "RB"}
+                                                ]
+                                            },
+                                            {
+                                                "selected_position": [
+                                                    {"position": "RB"}
+                                                ]
+                                            },
+                                        ]
+                                    },
+                                    "1": {
+                                        "player": [
+                                            {"player_key": "461.p.40001"},
+                                            {"name": {"full": "Jonah Coleman"}},
+                                            {"editorial_team_abbr": "ARI"},
+                                            {"display_position": "RB"},
+                                            {
+                                                "eligible_positions": [
+                                                    {"position": "RB"}
+                                                ]
+                                            },
+                                            {
+                                                "selected_position": [
+                                                    {"position": "BN"}
+                                                ]
+                                            },
+                                        ]
+                                    },
+                                    "2": {
+                                        "player": [
+                                            {"player_key": "461.p.31264"},
+                                            {"name": {"full": "Marcus Jones"}},
+                                            {"editorial_team_abbr": "NE"},
+                                            {"display_position": "CB"},
+                                            {
+                                                "eligible_positions": [
+                                                    {"position": "CB"},
+                                                    {"position": "DB"},
+                                                ]
+                                            },
+                                            {
+                                                "selected_position": [
+                                                    {"position": "BN"}
+                                                ]
+                                            },
+                                        ]
+                                    },
+                                }
+                            }
+                        },
+                    }
+                ]
+            },
+            "available_players": {},
+            "teams": {},
+            "transactions": {},
+        },
+        "fantasypros": {
+            "weekly": {
+                "data": {
+                    "players": [
+                        {
+                            "fpid": 23136,
+                            "name": "De Von Achane",
+                            "team_id": "MIA",
+                            "position_id": "RB",
+                            "stats": {"points_half": 18.17, "fpid": ""},
+                        },
+                        {
+                            "fpid": 26440,
+                            "name": "Jonah T Coleman",
+                            "team_id": "ARI",
+                            "position_id": "RB",
+                            "stats": {"rush_yd": 38.2},
+                        },
+                        {
+                            "fpid": 23890,
+                            "name": "Marcus Jones",
+                            "team_id": "NE",
+                            "position_id": "CB",
+                            "stats": {"def_tackle": 3.4, "player_id": ""},
+                        },
+                    ]
+                },
+                "fetched_at": "2026-10-11T04:23:35+00:00",
+            },
+            "ros": {
+                "data": {
+                    "players": [
+                        {
+                            "player_id": 23136,
+                            "player_team_id": "MIA",
+                            "player_position_id": "RB",
+                            "rank_ecr": 12,
+                        },
+                        {
+                            "player_id": 26440,
+                            "player_team_id": "ARI",
+                            "player_position_id": "RB",
+                            "rank_ecr": 88,
+                        },
+                        {
+                            "player_id": 23890,
+                            "player_team_id": "NE",
+                            "player_position_id": "CB",
+                            "rank_ecr": 142,
+                        },
+                    ]
+                },
+                "fetched_at": "2026-10-11T04:23:35+00:00",
+            },
+            "playoffs": {},
+        },
+    }
+
+    state = normalize_snapshot(
+        snapshot,
+        league_key="461.l.196780",
+        team_key="461.p.196780.t.1",
+    )
+
+    assert state["projection_errors"] == []
 
 
 def test_normalize_matches_live_projections_to_id_only_ros_rows() -> None:

@@ -5,11 +5,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .identity import (
-    index_provider_item,
-    index_provider_item_by_id,
+    _build_provider_entry,
+    index_provider_entry,
+    index_provider_entry_by_id,
+    is_provider_player_record,
     lookup_provider_entry,
     lookup_ros_entry,
     lookup_weekly_entry,
+    merge_normalized_provider_items,
+    normalize_fantasypros_item,
     provider_player_id,
 )
 from .value import score_projected_stats
@@ -69,10 +73,12 @@ def normalize_snapshot(
     team_rosters = _yahoo_team_rosters(snapshot["yahoo"].get("teams", {}))
     weekly_source = snapshot["fantasypros"]["weekly"]
     ros_source = snapshot["fantasypros"]["ros"]
-    weekly = _provider_players(weekly_source.get("data", weekly_source))
-    weekly_by_id = _provider_players_by_id(weekly_source.get("data", weekly_source))
-    ros = _provider_players(ros_source.get("data", ros_source))
-    ros_by_id = _provider_players_by_id(ros_source.get("data", ros_source))
+    weekly_payload = weekly_source.get("data", weekly_source)
+    ros_payload = ros_source.get("data", ros_source)
+    weekly = _provider_players(weekly_payload)
+    weekly_by_id = _provider_players_by_id(weekly_payload)
+    ros = _provider_players(ros_payload)
+    ros_by_id = _provider_players_by_id(ros_payload)
     playoff_sources = snapshot["fantasypros"].get("playoffs", {})
     playoff_projections = [
         _provider_players(source.get("data", source))
@@ -104,11 +110,23 @@ def normalize_snapshot(
     all_players = list(all_players_by_key.values())
     for player in all_players:
         weekly_data = lookup_weekly_entry(weekly, weekly_by_id, player, {})
-        ros_data = lookup_ros_entry(ros, ros_by_id, player, weekly_data)
+        ros_data = lookup_ros_entry(
+            ros,
+            ros_by_id,
+            player,
+            weekly_data,
+            weekly_by_id=weekly_by_id,
+        )
         if not weekly_data and ros_data:
             weekly_data = lookup_weekly_entry(weekly, weekly_by_id, player, ros_data)
         if not _has_ros_ranking(ros_data) and weekly_data:
-            ros_data = lookup_ros_entry(ros, ros_by_id, player, weekly_data)
+            ros_data = lookup_ros_entry(
+                ros,
+                ros_by_id,
+                player,
+                weekly_data,
+                weekly_by_id=weekly_by_id,
+            )
         playoff_data = [
             lookup_provider_entry(week, player) for week in playoff_projections
         ]
@@ -492,6 +510,7 @@ def _has_weekly_projection(data: dict[str, Any]) -> bool:
         "def_pa",
         "def_sack",
         "def_tackle",
+        "def_pd",
     ):
         if data.get(key) not in {None, ""}:
             return True
@@ -507,28 +526,53 @@ def _has_ros_ranking(data: dict[str, Any]) -> bool:
         "consensus_rank",
         "pos_rank",
         "tier",
-        "fpid",
-        "player_id",
-        "id",
     ):
         if data.get(key) not in {None, ""}:
             return True
-    return _has_weekly_projection(data)
+    return False
+
+
+def _iter_provider_player_dicts(payload: Any) -> Iterator[dict[str, Any]]:
+    if isinstance(payload, dict):
+        players = payload.get("players")
+        if isinstance(players, list):
+            for item in players:
+                if isinstance(item, dict):
+                    yield item
+            return
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                yield item
+        return
+    for item in _walk(payload):
+        if isinstance(item, dict) and is_provider_player_record(item):
+            yield item
+
+
+def _collect_merged_provider_entries(payload: Any) -> list[dict[str, Any]]:
+    normalized = [
+        normalize_fantasypros_item(item)
+        for item in _iter_provider_player_dicts(payload)
+    ]
+    mergeable = [item for item in normalized if is_provider_player_record(item)]
+    return [
+        _build_provider_entry(item)
+        for item in merge_normalized_provider_items(mergeable)
+    ]
 
 
 def _provider_players(payload: Any) -> dict[tuple[str, str], dict[str, Any]]:
     result: dict[tuple[str, str], dict[str, Any]] = {}
-    for item in _walk(payload):
-        if isinstance(item, dict):
-            index_provider_item(result, item)
+    for entry in _collect_merged_provider_entries(payload):
+        index_provider_entry(result, entry)
     return result
 
 
 def _provider_players_by_id(payload: Any) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
-    for item in _walk(payload):
-        if isinstance(item, dict):
-            index_provider_item_by_id(result, item)
+    for entry in _collect_merged_provider_entries(payload):
+        index_provider_entry_by_id(result, entry)
     return result
 
 
