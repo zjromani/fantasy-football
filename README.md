@@ -110,7 +110,10 @@ For the Worker:
 2. Run `npx wrangler d1 migrations apply fantasy-auto-gm-approvals --remote`.
 3. Set Worker secrets `SIGNING_SECRET`, `INGEST_TOKEN`, `GITHUB_TOKEN`,
    `GITHUB_REPOSITORY`, `NTFY_TOPIC`, and `PUBLIC_BASE_URL`.
-4. Give `GITHUB_TOKEN` only Actions workflow-dispatch access to this repository.
+4. Give `GITHUB_TOKEN` workflow-dispatch access for the Worker, or use
+   `repository_dispatch` (`auto-gm-run`) from agents that lack dispatch scope:
+   `gh api repos/zjromani/fantasy-football/dispatches -f event_type=auto-gm-run -f 'client_payload[job]=all'`
+   (in GHA, the calling job needs `permissions.contents: write`).
 5. Deploy from `worker/` with `npm ci && npm run deploy`.
 6. Put the deployed URL in `APPROVAL_BASE_URL`.
 
