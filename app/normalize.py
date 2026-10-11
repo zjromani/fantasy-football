@@ -461,14 +461,7 @@ def _yahoo_players(payload: Any) -> list[dict[str, Any]]:
             or flattened.get("primary_position")
             or (eligible_positions[0] if eligible_positions else "BN")
         ).split(",")[0]
-        bye_weeks = flattened.get("bye_weeks", {})
-        if isinstance(bye_weeks, list):
-            bye_weeks = _collapse(bye_weeks)
-        bye_week = (
-            int(bye_weeks["week"])
-            if isinstance(bye_weeks, dict) and bye_weeks.get("week")
-            else None
-        )
+        bye_week = _yahoo_bye_week(flattened.get("bye_weeks"))
         waiver_deadline = _normalize_deadline(
             flattened.get("waiver_date") or flattened.get("waiver_deadline")
         )
@@ -485,6 +478,29 @@ def _yahoo_players(payload: Any) -> list[dict[str, Any]]:
             "locked": bool(flattened.get("is_editable") == 0),
         }
     return list(result.values())
+
+
+def _player_on_bye(
+    player: dict[str, Any],
+    game_week: int | None,
+    ros_data: dict[str, Any],
+) -> bool:
+    if game_week is None:
+        return False
+    if player.get("bye_week") == game_week:
+        return True
+    for key in ("player_bye_week", "bye_week"):
+        value = ros_data.get(key)
+        if value not in {None, ""} and int(value) == game_week:
+            return True
+    return str(player.get("injury_status", "")).upper() in {"BYE", "BYEWEEK"}
+
+
+def _yahoo_bye_week(bye_weeks: Any) -> int | None:
+    for item in _walk(bye_weeks):
+        if isinstance(item, dict) and item.get("week") not in {None, ""}:
+            return int(item["week"])
+    return None
 
 
 def _ros_rank(ros_data: dict[str, Any]) -> int | None:
@@ -508,12 +524,15 @@ def validate_projection_coverage(
     *,
     game_week: int | None = None,
 ) -> list[str]:
+    if _player_on_bye(player, game_week, ros_data):
+        return []
     errors = []
-    on_bye = game_week is not None and player.get("bye_week") == game_week
-    if not on_bye and not _has_weekly_projection(weekly_data):
-        errors.append(f"missing weekly projection for {player['name']}")
-    if not _has_ros_ranking(ros_data):
+    has_weekly = _has_weekly_projection(weekly_data)
+    has_ros = _has_ros_ranking(ros_data)
+    if not has_ros:
         errors.append(f"missing ROS ranking for {player['name']}")
+    if not has_weekly and not has_ros:
+        errors.append(f"missing weekly projection for {player['name']}")
     return errors
 
 

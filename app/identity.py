@@ -431,6 +431,26 @@ def provider_as_yahoo_player(provider_data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def lookup_by_compact_name_only(
+    entries: Any, player: dict[str, Any]
+) -> dict[str, Any]:
+    name = str(player.get("name") or "")
+    if not name:
+        return {}
+    target = compact_name(name)
+    matches: list[dict[str, Any]] = []
+    iterable = entries.values() if isinstance(entries, dict) else entries
+    for entry in iterable:
+        if not isinstance(entry, dict):
+            continue
+        entry_name = str(entry.get("player_name") or entry.get("name") or "")
+        if compact_name(entry_name) == target:
+            matches.append(entry)
+    if len(matches) == 1:
+        return matches[0]
+    return {}
+
+
 def lookup_by_compact_name_team(
     entries: Any, player: dict[str, Any]
 ) -> dict[str, Any]:
@@ -569,10 +589,14 @@ def lookup_ros_entry(
             match = ros_by_id.get(player_id)
             if match:
                 return match
-    match = lookup_ros_by_compact_name_team(ros_by_id, weekly_data or yahoo_player)
+    subject = weekly_data or yahoo_player
+    match = lookup_ros_by_compact_name_team(ros_by_id, subject)
     if match:
         return match
-    return lookup_by_compact_name_team(ros_index, weekly_data or yahoo_player)
+    match = lookup_by_compact_name_team(ros_index, subject)
+    if match:
+        return match
+    return lookup_by_compact_name_only(ros_by_id, yahoo_player)
 
 
 def map_players(
