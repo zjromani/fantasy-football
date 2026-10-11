@@ -116,6 +116,8 @@ def normalize_fantasypros_item(item: dict[str, Any]) -> dict[str, Any]:
         merged["position"] = merged["player_position_id"]
     if merged.get("position_id") and not merged.get("position"):
         merged["position"] = merged["position_id"]
+    if not merged.get("player_name") and merged.get("name"):
+        merged["player_name"] = merged["name"]
     return merged
 
 
@@ -294,11 +296,9 @@ def provider_as_yahoo_player(provider_data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def lookup_ros_by_compact_name_team(
-    ros_by_id: dict[str, dict[str, Any]], player: dict[str, Any]
+def lookup_by_compact_name_team(
+    entries: Any, player: dict[str, Any]
 ) -> dict[str, Any]:
-    if not ros_by_id:
-        return {}
     if "player_name" in player or "fpid" in player or "player_id" in player:
         proxy = provider_as_yahoo_player(player)
     else:
@@ -308,7 +308,13 @@ def lookup_ros_by_compact_name_team(
     if not name or not team:
         return {}
     target = compact_name(name)
-    for entry in ros_by_id.values():
+    if isinstance(entries, dict):
+        iterable = entries.values()
+    else:
+        iterable = entries
+    for entry in iterable:
+        if not isinstance(entry, dict):
+            continue
         entry_name = str(entry.get("player_name") or entry.get("name") or "")
         entry_team = normalize_team(
             str(entry.get("team") or entry.get("player_team_id") or "")
@@ -316,6 +322,30 @@ def lookup_ros_by_compact_name_team(
         if entry_team == team and compact_name(entry_name) == target:
             return entry
     return {}
+
+
+def lookup_ros_by_compact_name_team(
+    ros_by_id: dict[str, dict[str, Any]], player: dict[str, Any]
+) -> dict[str, Any]:
+    return lookup_by_compact_name_team(ros_by_id, player)
+
+
+def lookup_weekly_entry(
+    weekly_index: dict[tuple[str, str], dict[str, Any]],
+    weekly_by_id: dict[str, dict[str, Any]],
+    yahoo_player: dict[str, Any],
+    ros_data: dict[str, Any],
+) -> dict[str, Any]:
+    weekly_data = lookup_provider_entry(weekly_index, yahoo_player)
+    if weekly_data:
+        return weekly_data
+    weekly_data = lookup_provider_entry_by_id(weekly_by_id, ros_data)
+    if weekly_data:
+        return weekly_data
+    weekly_data = lookup_by_compact_name_team(weekly_index, yahoo_player)
+    if weekly_data:
+        return weekly_data
+    return lookup_by_compact_name_team(weekly_by_id, yahoo_player)
 
 
 def lookup_ros_entry(
@@ -336,7 +366,10 @@ def lookup_ros_entry(
         )
         if ros_data:
             return ros_data
-    return lookup_ros_by_compact_name_team(ros_by_id, weekly_data or yahoo_player)
+    match = lookup_ros_by_compact_name_team(ros_by_id, weekly_data or yahoo_player)
+    if match:
+        return match
+    return lookup_by_compact_name_team(ros_index, weekly_data or yahoo_player)
 
 
 def map_players(
