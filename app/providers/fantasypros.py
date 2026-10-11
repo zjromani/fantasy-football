@@ -42,11 +42,26 @@ class FantasyProsClient:
         )
 
     def rest_of_season_rankings(self) -> ProviderResponse:
-        return self._fetch(
-            f"nfl/{self.settings.nfl_season}/consensus-rankings",
-            {"position": "ALL", "type": "ROS", "scoring": "HALF"},
+        path = f"nfl/{self.settings.nfl_season}/consensus-rankings"
+        base_params = {"type": "ROS", "scoring": "HALF"}
+        primary = self._fetch(
+            path,
+            {"position": "ALL", **base_params},
             ttl=timedelta(hours=48),
         )
+        payloads = [primary.data]
+        for position in ("IDP",):
+            try:
+                extra = self._fetch(
+                    path,
+                    {"position": position, **base_params},
+                    ttl=timedelta(hours=48),
+                )
+            except httpx.HTTPError:
+                continue
+            payloads.append(extra.data)
+        merged_data = self._merge_ranking_payloads(*payloads)
+        return ProviderResponse(merged_data, primary.fetched_at, primary.from_cache)
 
     def news(self) -> ProviderResponse:
         return self._fetch("nfl/news", {}, ttl=timedelta(minutes=30))
@@ -105,3 +120,32 @@ class FantasyProsClient:
     def _cache_path(self, path: str, params: dict[str, Any]) -> Path:
         key = json.dumps([path, params], sort_keys=True).encode()
         return self.cache_dir / f"{hashlib.sha256(key).hexdigest()}.json"
+
+    @staticmethod
+    def _merge_ranking_payloads(*payloads: Any) -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        players: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for payload in payloads:
+            if not isinstance(payload, dict):
+                continue
+            merged.update(
+                {
+                    key: value
+                    for key, value in payload.items()
+                    if key != "players"
+                }
+            )
+            for item in payload.get("players", []):
+                if not isinstance(item, dict):
+                    continue
+                player_id = str(
+                    item.get("player_id") or item.get("fpid") or item.get("id") or ""
+                )
+                if player_id and player_id in seen_ids:
+                    continue
+                if player_id:
+                    seen_ids.add(player_id)
+                players.append(item)
+        merged["players"] = players
+        return merged

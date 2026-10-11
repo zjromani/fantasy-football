@@ -33,7 +33,6 @@ jobs:
       LEAGUE_CONFIG_PATH: config/league.yml
       LEAGUE_KEY: ${{ vars.LEAGUE_KEY }}
       TEAM_KEY: ${{ vars.TEAM_KEY }}
-      FANTASY_WEEK: ${{ vars.FANTASY_WEEK }}
       YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
       YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
       YAHOO_REFRESH_TOKEN: ${{ secrets.YAHOO_REFRESH_TOKEN }}
