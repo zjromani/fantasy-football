@@ -405,9 +405,11 @@ class AutoGM:
         try:
             self._revalidate(kind, payload)
             if kind in {"lineup", "ir"}:
-                self.yahoo.set_roster(
-                    payload["team_key"], payload["week"], payload["positions"]
-                )
+                team_key = payload["team_key"]
+                week = int(payload["week"])
+                positions = self.yahoo.roster_position_map(team_key, week)
+                positions.update(payload["positions"])
+                self.yahoo.set_roster(team_key, week, positions)
             elif kind == "fab":
                 transaction_key = self.yahoo.submit_fab_claim(
                     payload["league_key"],

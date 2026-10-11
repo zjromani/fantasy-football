@@ -147,6 +147,14 @@ class YahooClient:
     def get_team_roster(self, team_key: str, week: int) -> dict:
         return self.get_json(f"team/{team_key}/roster;week={week}")
 
+    def roster_position_map(self, team_key: str, week: int) -> dict[str, str]:
+        from .normalize import _yahoo_players
+
+        players = _yahoo_players(self.get_team_roster(team_key, week))
+        return {
+            player["player_key"]: player["selected_position"] for player in players
+        }
+
     def current_week(self, league_key: str) -> int:
         payload = self.get_json(f"league/{league_key}", cache_ttl_seconds=300)
         for item in self._walk_dicts(payload):
@@ -230,8 +238,9 @@ class YahooClient:
     def set_roster(self, team_key: str, week: int, positions: dict[str, str]) -> None:
         players = "".join(
             "<player><player_key>"
-            f"{self._xml(player_key)}</player_key><position>{self._xml(position)}"
-            "</position></player>"
+            f"{self._xml(player_key)}</player_key>"
+            f"<selected_position>{self._xml(position)}</selected_position>"
+            "</player>"
             for player_key, position in sorted(positions.items())
         )
         body = (
