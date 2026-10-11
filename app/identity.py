@@ -92,9 +92,42 @@ def provider_position(item: dict[str, Any]) -> str:
     return str(
         item.get("position")
         or item.get("player_position")
+        or item.get("player_position_id")
         or item.get("position_id")
         or ""
     ).upper()
+
+
+def normalize_fantasypros_item(item: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(item)
+    nested = item.get("player")
+    if isinstance(nested, dict):
+        merged = {**nested, **{key: value for key, value in item.items() if key != "player"}}
+    if merged.get("player_team_id") and not merged.get("team"):
+        merged["team"] = merged["player_team_id"]
+    if merged.get("team_id") and not merged.get("team"):
+        merged["team"] = merged["team_id"]
+    if merged.get("player_position_id") and not merged.get("position"):
+        merged["position"] = merged["player_position_id"]
+    if merged.get("position_id") and not merged.get("position"):
+        merged["position"] = merged["position_id"]
+    return merged
+
+
+def is_provider_player_record(item: dict[str, Any]) -> bool:
+    merged = normalize_fantasypros_item(item)
+    name = merged.get("player_name") or merged.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return False
+    if any(merged.get(key) not in {None, ""} for key in ("fpid", "player_id", "id")):
+        return True
+    if any(
+        merged.get(key) not in {None, ""}
+        for key in ("rank_ecr", "rank", "consensus_rank")
+    ):
+        return True
+    stats = merged.get("stats")
+    return isinstance(stats, dict) and bool(stats)
 
 
 def is_team_defense(position: str) -> bool:
@@ -158,17 +191,53 @@ def lookup_keys_for_provider_item(item: dict[str, Any]) -> list[tuple[str, str]]
 def index_provider_item(
     result: dict[tuple[str, str], dict[str, Any]], item: dict[str, Any]
 ) -> None:
-    name = item.get("player_name") or item.get("name")
+    if not is_provider_player_record(item):
+        return
+    merged = normalize_fantasypros_item(item)
+    name = merged.get("player_name") or merged.get("name")
     if not isinstance(name, str):
         return
-    stats = item.get("stats", {})
+    stats = merged.get("stats", {})
     entry = {
-        **item,
+        **merged,
         **(stats if isinstance(stats, dict) else {}),
         "_has_stats": isinstance(stats, dict) and bool(stats),
     }
-    for key in lookup_keys_for_provider_item(item):
+    for key in lookup_keys_for_provider_item(merged):
         result[key] = entry
+
+
+def provider_player_id(item: dict[str, Any]) -> str:
+    merged = normalize_fantasypros_item(item)
+    for key in ("fpid", "player_id", "id"):
+        value = merged.get(key)
+        if value not in {None, ""}:
+            return str(value)
+    return ""
+
+
+def index_provider_item_by_id(
+    result: dict[str, dict[str, Any]], item: dict[str, Any]
+) -> None:
+    player_id = provider_player_id(item)
+    if not player_id:
+        return
+    merged = normalize_fantasypros_item(item)
+    if not (
+        is_provider_player_record(item)
+        or any(
+            merged.get(key) not in {None, ""}
+            for key in ("rank_ecr", "rank", "consensus_rank")
+        )
+    ):
+        return
+    merged = normalize_fantasypros_item(item)
+    stats = merged.get("stats", {})
+    result[player_id] = {
+        **merged,
+        **(stats if isinstance(stats, dict) else {}),
+        "_has_stats": isinstance(stats, dict) and bool(stats),
+    }
 
 
 def lookup_provider_entry(
@@ -176,6 +245,17 @@ def lookup_provider_entry(
 ) -> dict[str, Any]:
     for key in lookup_keys_for_yahoo_player(player):
         match = index.get(key)
+        if match:
+            return match
+    return {}
+
+
+def lookup_provider_entry_by_id(
+    index: dict[str, dict[str, Any]], provider_data: dict[str, Any]
+) -> dict[str, Any]:
+    player_id = provider_player_id(provider_data)
+    if player_id:
+        match = index.get(player_id)
         if match:
             return match
     return {}

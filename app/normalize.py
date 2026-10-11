@@ -4,7 +4,12 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
-from .identity import index_provider_item, lookup_provider_entry
+from .identity import (
+    index_provider_item,
+    index_provider_item_by_id,
+    lookup_provider_entry,
+    lookup_provider_entry_by_id,
+)
 from .value import score_projected_stats
 
 YAHOO_STAT_IDS = {
@@ -64,6 +69,7 @@ def normalize_snapshot(
     ros_source = snapshot["fantasypros"]["ros"]
     weekly = _provider_players(weekly_source.get("data", weekly_source))
     ros = _provider_players(ros_source.get("data", ros_source))
+    ros_by_id = _provider_players_by_id(ros_source.get("data", ros_source))
     playoff_sources = snapshot["fantasypros"].get("playoffs", {})
     playoff_projections = [
         _provider_players(source.get("data", source))
@@ -96,6 +102,8 @@ def normalize_snapshot(
     for player in all_players:
         weekly_data = lookup_provider_entry(weekly, player)
         ros_data = lookup_provider_entry(ros, player)
+        if not _has_ros_ranking(ros_data) and weekly_data:
+            ros_data = lookup_provider_entry_by_id(ros_by_id, weekly_data) or ros_data
         playoff_data = [
             lookup_provider_entry(week, player) for week in playoff_projections
         ]
@@ -489,6 +497,14 @@ def _provider_players(payload: Any) -> dict[tuple[str, str], dict[str, Any]]:
     for item in _walk(payload):
         if isinstance(item, dict):
             index_provider_item(result, item)
+    return result
+
+
+def _provider_players_by_id(payload: Any) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for item in _walk(payload):
+        if isinstance(item, dict):
+            index_provider_item_by_id(result, item)
     return result
 
 

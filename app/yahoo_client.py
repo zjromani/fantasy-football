@@ -147,6 +147,16 @@ class YahooClient:
     def get_team_roster(self, team_key: str, week: int) -> dict:
         return self.get_json(f"team/{team_key}/roster;week={week}")
 
+    def current_week(self, league_key: str) -> int:
+        payload = self.get_json(f"league/{league_key}", cache_ttl_seconds=300)
+        for item in self._walk_dicts(payload):
+            current_week = item.get("current_week")
+            if current_week not in {None, ""}:
+                return int(current_week)
+        raise RuntimeError(
+            f"Yahoo league metadata for {league_key} did not include current_week"
+        )
+
     def get_available_players(
         self, league_key: str, *, page_size: int = 25, maximum: int = 1000
     ) -> dict[str, list[dict]]:

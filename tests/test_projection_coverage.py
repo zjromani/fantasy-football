@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.identity import (
     compact_name,
+    index_provider_item,
     lookup_provider_entry,
     map_players,
     normalize_name,
@@ -61,6 +62,59 @@ def test_validate_projection_coverage_reports_missing_entries() -> None:
         "missing weekly projection for Mystery Player",
         "missing ROS ranking for Mystery Player",
     ]
+
+
+def test_lookup_indexes_nested_consensus_ranking_player_payload() -> None:
+    index: dict[tuple[str, str], dict] = {}
+    index_provider_item(
+        index,
+        {
+            "rank_ecr": 12,
+            "player": {
+                "player_name": "De'Von Achane",
+                "player_team_id": "MIA",
+                "player_position_id": "RB",
+                "player_id": 23133,
+            },
+        },
+    )
+    yahoo = {"name": "De'Von Achane", "nfl_team": "MIA", "position": "RB"}
+
+    match = lookup_provider_entry(index, yahoo)
+
+    assert match["rank_ecr"] == 12
+
+
+def test_normalize_uses_weekly_fpid_to_match_ros_rankings() -> None:
+    fixture = json.loads(json.dumps(FIXTURE))
+    fixture["fantasypros"]["ros"]["data"]["players"] = [
+        {
+            "player_id": 23133,
+            "player_team_id": "MIA",
+            "player_position_id": "RB",
+            "rank_ecr": 12,
+        },
+        {
+            "player_id": 8090,
+            "player_team_id": "GB",
+            "player_position_id": "DST",
+            "rank_ecr": 9,
+        },
+        {
+            "player_id": 24781,
+            "player_team_id": "NE",
+            "player_position_id": "CB",
+            "rank_ecr": 142,
+        },
+    ]
+
+    state = normalize_snapshot(
+        fixture,
+        league_key="461.l.196780",
+        team_key="461.p.196780.t.1",
+    )
+
+    assert state["projection_errors"] == []
 
 
 def test_map_players_uses_shared_lookup_rules() -> None:

@@ -2,7 +2,7 @@
 
 ## Weekly operation
 
-1. Update the `FANTASY_WEEK` repository variable.
+1. Optional: set `FANTASY_WEEK` only when you need to override Yahoo's current week (tests or replays). Scheduled Auto-GM resolves the week from Yahoo league metadata when the variable is unset.
 2. Confirm FantasyPros cache freshness and provider request budget in the audit.
 3. Review the weekly digest and unresolved approval notifications.
 4. Leave `WRITES_ENABLED=false` whenever behavior or league settings are uncertain.
