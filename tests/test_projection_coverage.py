@@ -69,6 +69,19 @@ def test_validate_projection_coverage_reports_missing_entries() -> None:
     ]
 
 
+def test_validate_projection_coverage_skips_weekly_when_player_on_bye() -> None:
+    player = {
+        "name": "De'Von Achane",
+        "nfl_team": "MIA",
+        "position": "RB",
+        "bye_week": 6,
+    }
+
+    errors = validate_projection_coverage(player, {}, {}, game_week=6)
+
+    assert errors == ["missing ROS ranking for De'Von Achane"]
+
+
 def test_lookup_indexes_nested_consensus_ranking_player_payload() -> None:
     index: dict[tuple[str, str], dict] = {}
     index_provider_item(

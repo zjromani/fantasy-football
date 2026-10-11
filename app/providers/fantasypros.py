@@ -50,7 +50,7 @@ class FantasyProsClient:
             ttl=timedelta(hours=48),
         )
         payloads = [primary.data]
-        for position in ("IDP",):
+        for position in ("IDP", "DB", "DL", "LB"):
             try:
                 extra = self._fetch(
                     path,

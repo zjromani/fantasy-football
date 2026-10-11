@@ -9,6 +9,7 @@ from .identity import (
     index_provider_item_by_id,
     lookup_provider_entry,
     lookup_ros_entry,
+    lookup_weekly_entry,
     provider_player_id,
 )
 from .value import score_projected_stats
@@ -69,6 +70,7 @@ def normalize_snapshot(
     weekly_source = snapshot["fantasypros"]["weekly"]
     ros_source = snapshot["fantasypros"]["ros"]
     weekly = _provider_players(weekly_source.get("data", weekly_source))
+    weekly_by_id = _provider_players_by_id(weekly_source.get("data", weekly_source))
     ros = _provider_players(ros_source.get("data", ros_source))
     ros_by_id = _provider_players_by_id(ros_source.get("data", ros_source))
     playoff_sources = snapshot["fantasypros"].get("playoffs", {})
@@ -101,14 +103,23 @@ def normalize_snapshot(
     }
     all_players = list(all_players_by_key.values())
     for player in all_players:
-        weekly_data = lookup_provider_entry(weekly, player)
+        weekly_data = lookup_weekly_entry(weekly, weekly_by_id, player, {})
         ros_data = lookup_ros_entry(ros, ros_by_id, player, weekly_data)
+        if not weekly_data and ros_data:
+            weekly_data = lookup_weekly_entry(weekly, weekly_by_id, player, ros_data)
+        if not _has_ros_ranking(ros_data) and weekly_data:
+            ros_data = lookup_ros_entry(ros, ros_by_id, player, weekly_data)
         playoff_data = [
             lookup_provider_entry(week, player) for week in playoff_projections
         ]
         if player["player_key"] in roster_keys:
             projection_errors.extend(
-                validate_projection_coverage(player, weekly_data, ros_data)
+                validate_projection_coverage(
+                    player,
+                    weekly_data,
+                    ros_data,
+                    game_week=int(snapshot["week"]),
+                )
             )
         week_points = (
             score_projected_stats(
@@ -120,6 +131,8 @@ def normalize_snapshot(
                 "fpts",
                 "fantasy_points",
                 "points",
+                "points_half",
+                "points_std",
                 "projected_points",
             )
         )
@@ -447,9 +460,12 @@ def validate_projection_coverage(
     player: dict[str, Any],
     weekly_data: dict[str, Any],
     ros_data: dict[str, Any],
+    *,
+    game_week: int | None = None,
 ) -> list[str]:
     errors = []
-    if not _has_weekly_projection(weekly_data):
+    on_bye = game_week is not None and player.get("bye_week") == game_week
+    if not on_bye and not _has_weekly_projection(weekly_data):
         errors.append(f"missing weekly projection for {player['name']}")
     if not _has_ros_ranking(ros_data):
         errors.append(f"missing ROS ranking for {player['name']}")
@@ -465,6 +481,9 @@ def _has_weekly_projection(data: dict[str, Any]) -> bool:
         "fpts",
         "fantasy_points",
         "points",
+        "points_half",
+        "points_std",
+        "points_ppr",
         "projected_points",
         "pass_att",
         "pass_yd",
@@ -472,6 +491,7 @@ def _has_weekly_projection(data: dict[str, Any]) -> bool:
         "rec_yd",
         "def_pa",
         "def_sack",
+        "def_tackle",
     ):
         if data.get(key) not in {None, ""}:
             return True
