@@ -10,9 +10,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .approvals import ApprovalService
-from .fantasy_week import resolve_fantasy_week
 from .audit import AuditStore, hash_payload
 from .config import Settings
+from .fantasy_week import resolve_fantasy_week
 from .league import LeagueConfig
 from .normalize import extract_yahoo_settings, normalize_snapshot
 from .notifications import Notification, NtfyClient

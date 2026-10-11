@@ -102,7 +102,8 @@ def normalize_fantasypros_item(item: dict[str, Any]) -> dict[str, Any]:
     merged = dict(item)
     nested = item.get("player")
     if isinstance(nested, dict):
-        merged = {**nested, **{key: value for key, value in item.items() if key != "player"}}
+        top_level = {key: value for key, value in item.items() if key != "player"}
+        merged = {**nested, **top_level}
     if merged.get("player_team_id") and not merged.get("team"):
         merged["team"] = merged["player_team_id"]
     if merged.get("team_id") and not merged.get("team"):
