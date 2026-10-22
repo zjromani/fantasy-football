@@ -187,6 +187,6 @@ protected_player_keys: []
 # GroupMe league chat (read-only). Set enabled: true and group_id after resolving
 # from the GroupMe app or groupme-mcp list_groups. Token: GROUPME_ACCESS_TOKEN env only.
 groupme:
-  enabled: false
-  group_id: null
+  enabled: true
+  group_id: "88848000"
   members: {}
